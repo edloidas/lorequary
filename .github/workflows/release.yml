@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'parser-v*'
+
+# OIDC trusted publishing — no npm token; the trusted publisher on npmjs.com
+# must point at this repo and this workflow file (release.yml).
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  publish-parser:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads the pnpm version from the root packageManager field.
+      # Stay on pnpm 10 — pnpm 11 has an OIDC publish regression (pnpm/pnpm#11513).
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # prepublishOnly runs check + tests + build before the tarball is created.
+      - name: Publish @lorequary/parser
+        run: pnpm --filter @lorequary/parser publish --no-git-checks
