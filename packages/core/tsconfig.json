@@ -3,6 +3,7 @@
     "target": "ESNext",
     "lib": ["ESNext"],
     "strict": true,
+    "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "useUnknownInCatchVariables": true,
@@ -10,7 +11,9 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    "noEmit": true
+    "noEmit": true,
+    "types": ["vite-plus/test/globals"]
   },
+  "files": ["vite.config.ts"],
   "include": ["src"]
 }

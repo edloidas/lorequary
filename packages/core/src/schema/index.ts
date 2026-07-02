@@ -1,2 +1,26 @@
-export type {Condition, DialogEdge, DialogNode, Effect, Handle, ProjectDocument, ProjectMeta, Variable, Viewport} from './types';
+export type {
+  Character,
+  CharacterType,
+  CheckModifier,
+  ChoiceOption,
+  ChoiceVisibility,
+  ComputedExpression,
+  DialogEdge,
+  DialogNode,
+  Dialogue,
+  DialogueEditorState,
+  Expression,
+  FieldDefinition,
+  NodeGroup,
+  NodeKind,
+  PassiveCheck,
+  ProjectDocument,
+  ProjectMeta,
+  ProjectSettings,
+  SkillCheck,
+  TextVariant,
+  Variable,
+  VariableType,
+  Viewport,
+} from './types';
 export {SCHEMA_VERSION} from './types';
