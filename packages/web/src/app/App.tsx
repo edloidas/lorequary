@@ -4,6 +4,7 @@ import {useEffect, useState} from 'react';
 import {Inspector} from '@/modules/inspector/ui/Inspector';
 import {startAutosave} from '@/modules/persistence/autosave';
 import {loadLastProject, saveProject} from '@/modules/persistence/db';
+import {PlaytestBar} from '@/modules/playtest/ui/PlaytestBar';
 import {$project, createDefaultProject} from '@/modules/project/model/store';
 import {Sidebar} from '@/modules/project/ui/Sidebar';
 import {
@@ -114,6 +115,7 @@ export const App = (): ReactElement => {
       <main className='flex min-w-0 flex-1 flex-col'>
         <Toolbar />
         <Canvas />
+        <PlaytestBar />
       </main>
       <Inspector />
     </div>
