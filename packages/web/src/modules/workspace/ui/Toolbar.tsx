@@ -2,6 +2,7 @@ import {useStore} from '@nanostores/react';
 
 import {$canRedo, $canUndo, addNode, redo, runCommand, undo} from '@/modules/workspace/model/commands';
 import {$currentDialogue} from '@/modules/workspace/model/store';
+import {$validationOpen} from '@/modules/workspace/model/validation';
 import {cn} from '@/shared/lib/cn';
 
 import type {NodeKind} from '@lorequary/core';
@@ -47,6 +48,14 @@ export const Toolbar = (): ReactElement => {
       </button>
       <button type='button' className={buttonClass(canRedo)} disabled={!canRedo} onClick={redo}>
         ↪ Redo
+      </button>
+      <div className='mx-1 h-4 w-px bg-neutral-800' />
+      <button
+        type='button'
+        className={buttonClass(dialogue !== null)}
+        onClick={() => $validationOpen.set(!$validationOpen.get())}
+      >
+        ✓ Validate
       </button>
       <div className='flex-1' />
       <span className='text-xs text-neutral-500'>{dialogue?.name ?? ''}</span>

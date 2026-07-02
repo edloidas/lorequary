@@ -19,6 +19,7 @@ import {
 import {$currentDialogue, $currentDialogueId, $selection, clearSelection} from '@/modules/workspace/model/store';
 import {Canvas} from '@/modules/workspace/ui/Canvas';
 import {Toolbar} from '@/modules/workspace/ui/Toolbar';
+import {ValidationPanel} from '@/modules/workspace/ui/ValidationPanel';
 
 import type {ReactElement} from 'react';
 
@@ -115,6 +116,7 @@ export const App = (): ReactElement => {
       <main className='flex min-w-0 flex-1 flex-col'>
         <Toolbar />
         <Canvas />
+        <ValidationPanel />
         <PlaytestBar />
       </main>
       <Inspector />

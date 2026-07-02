@@ -1,6 +1,6 @@
 import {useStore} from '@nanostores/react';
 import {Background, BackgroundVariant, Controls, ReactFlow, ReactFlowProvider, useReactFlow} from '@xyflow/react';
-import {useCallback, useMemo} from 'react';
+import {useCallback, useEffect, useMemo} from 'react';
 
 import {$project} from '@/modules/project/model/store';
 import {
@@ -13,6 +13,7 @@ import {
   setEntryNode,
 } from '@/modules/workspace/model/commands';
 import {$contextMenu, $currentDialogue, $dragPositions, $selection} from '@/modules/workspace/model/store';
+import {$focusNodeId} from '@/modules/workspace/model/validation';
 
 import type {DialogFlowNode} from '../flow/adapter';
 import type {Connection, EdgeChange, NodeChange, NodeTypes} from '@xyflow/react';
@@ -107,7 +108,20 @@ const CanvasInner = (): ReactElement | null => {
   const dialogue = useStore($currentDialogue);
   const selection = useStore($selection);
   const dragPositions = useStore($dragPositions);
-  const {screenToFlowPosition} = useReactFlow();
+  const focusNodeId = useStore($focusNodeId);
+  const {screenToFlowPosition, setCenter} = useReactFlow();
+
+  useEffect(() => {
+    if (focusNodeId === null || dialogue === null) return;
+
+    const position = dialogue.editor.nodePositions[focusNodeId];
+
+    if (position !== undefined) {
+      void setCenter(position.x + 110, position.y + 40, {zoom: 1, duration: 300});
+    }
+
+    $focusNodeId.set(null);
+  }, [focusNodeId, dialogue, setCenter]);
 
   const nodes = useMemo(() => {
     if (dialogue === null || project === null) return [];
