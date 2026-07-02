@@ -5,7 +5,7 @@ import {cn} from '@/shared/lib/cn';
 import type {ReactElement, ReactNode} from 'react';
 
 export const Field = ({label, children}: {label: string; children: ReactNode}): ReactElement => (
-  <label className='flex flex-col gap-1 text-[11px] font-medium tracking-wide text-neutral-400'>
+  <label className='flex flex-col gap-1 text-[11px] font-medium tracking-wide text-zinc-400'>
     {label}
     {children}
   </label>
@@ -14,7 +14,7 @@ export const Field = ({label, children}: {label: string; children: ReactNode}): 
 Field.displayName = 'Field';
 
 export const INPUT_CLASS =
-  'rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 outline-none focus:border-neutral-500';
+  'rounded border border-ink-600 bg-ink-950 px-2 py-1 text-xs text-zinc-200 outline-none focus:border-sky-700';
 
 export const TextInput = ({
   value,
@@ -129,7 +129,7 @@ export const SmallButton = ({
   <button
     type='button'
     className={cn(
-      'rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800',
+      'rounded border border-ink-600 px-2 py-0.5 text-[11px] text-zinc-300 hover:bg-ink-800',
       danger && 'border-red-900 text-red-400 hover:bg-red-950',
     )}
     onClick={onClick}

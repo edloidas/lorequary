@@ -113,39 +113,48 @@ const omitKeys = <T>(record: Record<string, T>, keys: string[]): Record<string, 
 // * Node commands
 //
 
+const insertNode = (
+  doc: ProjectDocument,
+  dialogueId: string,
+  node: DialogNode,
+  position: Position,
+  groupId?: string,
+): ProjectDocument =>
+  mapDialogue(doc, dialogueId, dialogue => ({
+    ...dialogue,
+    nodes: [...dialogue.nodes, node],
+    editor: {
+      ...dialogue.editor,
+      nodePositions: {...dialogue.editor.nodePositions, [node.id]: position},
+      ...(groupId === undefined || dialogue.editor.groups === undefined
+        ? {}
+        : {
+            groups: dialogue.editor.groups.map(group =>
+              group.id === groupId ? {...group, nodeIds: [...group.nodeIds, node.id]} : group,
+            ),
+          }),
+    },
+  }));
+
+const buildNode = (dialogueId: string, kind: NodeKind): DialogNode => {
+  const nodeId = nanoid(8);
+
+  return {
+    id: nodeId,
+    kind,
+    text: '',
+    lineKey: nodeTextKey(dialogueId, nodeId),
+    ...(kind === 'choice' ? {options: []} : {}),
+  };
+};
+
 export const addNode = (
   doc: ProjectDocument,
   dialogueId: string,
   kind: NodeKind,
   position: Position,
   groupId?: string,
-): ProjectDocument =>
-  mapDialogue(doc, dialogueId, dialogue => {
-    const nodeId = nanoid(8);
-    const node: DialogNode = {
-      id: nodeId,
-      kind,
-      text: '',
-      lineKey: nodeTextKey(dialogueId, nodeId),
-      ...(kind === 'choice' ? {options: []} : {}),
-    };
-
-    return {
-      ...dialogue,
-      nodes: [...dialogue.nodes, node],
-      editor: {
-        ...dialogue.editor,
-        nodePositions: {...dialogue.editor.nodePositions, [nodeId]: position},
-        ...(groupId === undefined || dialogue.editor.groups === undefined
-          ? {}
-          : {
-              groups: dialogue.editor.groups.map(group =>
-                group.id === groupId ? {...group, nodeIds: [...group.nodeIds, nodeId]} : group,
-              ),
-            }),
-      },
-    };
-  });
+): ProjectDocument => insertNode(doc, dialogueId, buildNode(dialogueId, kind), position, groupId);
 
 export const updateNode = (
   doc: ProjectDocument,
@@ -290,6 +299,92 @@ export const deleteEdges = (doc: ProjectDocument, dialogueId: string, edgeIds: s
     };
   });
 
+// Skill-check outcome targets live inside options; the canvas shows them as derived edges.
+export const setCheckTarget = (
+  doc: ProjectDocument,
+  dialogueId: string,
+  nodeId: string,
+  optionId: string,
+  outcome: 'success' | 'failure',
+  targetId: string,
+): ProjectDocument =>
+  mapDialogue(doc, dialogueId, dialogue => ({
+    ...dialogue,
+    nodes: dialogue.nodes.map(node => {
+      if (node.id !== nodeId) return node;
+
+      return {
+        ...node,
+        options: node.options?.map(option => {
+          if (option.id !== optionId || option.skillCheck === undefined) return option;
+
+          const key = outcome === 'success' ? 'successTargetId' : 'failureTargetId';
+
+          return {...option, skillCheck: {...option.skillCheck, [key]: targetId}};
+        }),
+      };
+    }),
+  }));
+
+// Routes a canvas connection: options carrying a skill check store outcome targets
+// instead of edges — the first empty outcome slot wins, then success is replaced.
+export const connectHandles = (
+  doc: ProjectDocument,
+  dialogueId: string,
+  connection: {source: string; target: string; sourceHandle?: string},
+): ProjectDocument => {
+  const dialogue = doc.dialogues.find(d => d.id === dialogueId);
+  const sourceNode = dialogue?.nodes.find(node => node.id === connection.source);
+  const option =
+    connection.sourceHandle === undefined
+      ? undefined
+      : sourceNode?.options?.find(o => o.id === connection.sourceHandle);
+
+  if (option?.skillCheck !== undefined) {
+    const outcome =
+      option.skillCheck.successTargetId === '' || option.skillCheck.failureTargetId !== '' ? 'success' : 'failure';
+
+    return setCheckTarget(doc, dialogueId, connection.source, option.id, outcome, connection.target);
+  }
+
+  return addEdge(doc, dialogueId, connection);
+};
+
+// Horizontal gap between a source node and a quick-added follower.
+const QUICK_ADD_OFFSET_X = 340;
+const QUICK_ADD_OFFSET_Y = 56;
+
+export const addConnectedNode = (
+  doc: ProjectDocument,
+  dialogueId: string,
+  kind: NodeKind,
+  source: {nodeId: string; handleId?: string},
+  position?: Position,
+  groupId?: string,
+): ProjectDocument => {
+  const dialogue = doc.dialogues.find(d => d.id === dialogueId);
+  const sourceNode = dialogue?.nodes.find(n => n.id === source.nodeId);
+
+  if (dialogue === undefined || sourceNode === undefined) return doc;
+
+  const origin = dialogue.editor.nodePositions[source.nodeId] ?? {x: 0, y: 0};
+  const optionIndex =
+    source.handleId === undefined ? -1 : (sourceNode.options ?? []).findIndex(option => option.id === source.handleId);
+  const target = position ?? {
+    x: origin.x + QUICK_ADD_OFFSET_X,
+    y: origin.y + (optionIndex > 0 ? optionIndex * QUICK_ADD_OFFSET_Y : 0),
+  };
+
+  const node = buildNode(dialogueId, kind);
+  const withNode = insertNode(doc, dialogueId, node, target, groupId);
+
+  return connectHandles(withNode, dialogueId, {
+    source: source.nodeId,
+    target: node.id,
+    ...(source.handleId === undefined ? {} : {sourceHandle: source.handleId}),
+  });
+};
+
 //
 // * Dialogue commands
 //
@@ -360,6 +455,11 @@ export const renameGroup = (doc: ProjectDocument, dialogueId: string, groupId: s
 
 export const setEntryNode = (doc: ProjectDocument, dialogueId: string, nodeId: string): ProjectDocument =>
   mapDialogue(doc, dialogueId, dialogue => ({...dialogue, entryNodeId: nodeId}));
+
+export const renameProject = (doc: ProjectDocument, name: string): ProjectDocument => ({
+  ...doc,
+  meta: {...doc.meta, name},
+});
 
 //
 // * Character and variable commands
