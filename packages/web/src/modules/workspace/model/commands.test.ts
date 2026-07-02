@@ -10,11 +10,13 @@ import {
   addDialogue,
   addEdge,
   addNode,
+  coalesced,
   deleteDialogue,
   deleteEdges,
   deleteNodes,
   deleteVariable,
   duplicateNodes,
+  endCoalescing,
   moveNodes,
   redo,
   renameDialogue,
@@ -311,5 +313,68 @@ describe('history', () => {
     runCommand(d => d);
 
     expect($canUndo.get()).toBe(false);
+  });
+});
+
+describe('coalesced commands', () => {
+  it('merges consecutive same-key commands into one undo entry', () => {
+    const {doc, dlg} = setup();
+    const nodeId = doc.dialogues[0]?.nodes[0]?.id ?? '';
+
+    coalesced('edit-text', () => runCommand(d => updateNode(d, dlg, nodeId, {text: 'H'})));
+    coalesced('edit-text', () => runCommand(d => updateNode(d, dlg, nodeId, {text: 'He'})));
+    coalesced('edit-text', () => runCommand(d => updateNode(d, dlg, nodeId, {text: 'Hey'})));
+
+    expect(($project.get() as ProjectDocument).dialogues[0]?.nodes[0]?.text).toBe('Hey');
+
+    undo();
+
+    expect($project.get()).toStrictEqual(doc);
+    expect($canUndo.get()).toBe(false);
+  });
+
+  it('breaks the chain when a different command runs in between', () => {
+    const {doc, dlg} = setup();
+    const nodeId = doc.dialogues[0]?.nodes[0]?.id ?? '';
+
+    coalesced('edit-text', () => runCommand(d => updateNode(d, dlg, nodeId, {text: 'A'})));
+    runCommand(d => addNode(d, dlg, 'line', {x: 0, y: 0}));
+    coalesced('edit-text', () => runCommand(d => updateNode(d, dlg, nodeId, {text: 'AB'})));
+
+    undo();
+
+    // Only the second typing burst is undone; the added node remains.
+    const current = $project.get() as ProjectDocument;
+
+    expect(current.dialogues[0]?.nodes[0]?.text).toBe('A');
+    expect(current.dialogues[0]?.nodes).toHaveLength(2);
+  });
+
+  it('endCoalescing seals the current burst', () => {
+    const {dlg, doc} = setup();
+    const nodeId = doc.dialogues[0]?.nodes[0]?.id ?? '';
+
+    coalesced('edit-text', () => runCommand(d => updateNode(d, dlg, nodeId, {text: 'A'})));
+    endCoalescing();
+    coalesced('edit-text', () => runCommand(d => updateNode(d, dlg, nodeId, {text: 'AB'})));
+
+    undo();
+
+    expect(($project.get() as ProjectDocument).dialogues[0]?.nodes[0]?.text).toBe('A');
+  });
+
+  it('undo resets coalescing so redo history stays consistent', () => {
+    const {dlg, doc} = setup();
+    const nodeId = doc.dialogues[0]?.nodes[0]?.id ?? '';
+
+    coalesced('edit-text', () => runCommand(d => updateNode(d, dlg, nodeId, {text: 'A'})));
+    undo();
+    coalesced('edit-text', () => runCommand(d => updateNode(d, dlg, nodeId, {text: 'B'})));
+
+    expect(($project.get() as ProjectDocument).dialogues[0]?.nodes[0]?.text).toBe('B');
+
+    undo();
+
+    expect(($project.get() as ProjectDocument).dialogues[0]?.nodes[0]?.text).toBe(doc.dialogues[0]?.nodes[0]?.text);
   });
 });

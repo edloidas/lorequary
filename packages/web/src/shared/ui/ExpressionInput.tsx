@@ -1,7 +1,7 @@
 import {parseCondition, parseEffect, validate} from '@lorequary/parser';
 import {useMemo} from 'react';
 
-import {useCommitted} from '@/shared/hooks/useCommitted';
+import {useLiveDraft} from '@/shared/hooks/useLiveDraft';
 import {cn} from '@/shared/lib/cn';
 
 import type {VariableSchema} from '@lorequary/parser';
@@ -28,7 +28,12 @@ type ExpressionInputProps = {
 };
 
 export const ExpressionInput = ({value, mode, schema, placeholder, onCommit}: ExpressionInputProps): ReactElement => {
-  const {draft, setDraft, flush} = useCommitted(value, onCommit);
+  // Valid states are committed live; invalid drafts stay local until blur flushes them.
+  const {draft, handleChange, handleBlur} = useLiveDraft(
+    value,
+    onCommit,
+    next => validateExpression(next, mode, schema) === null,
+  );
   const error = useMemo(() => validateExpression(draft, mode, schema), [draft, mode, schema]);
 
   return (
@@ -41,11 +46,8 @@ export const ExpressionInput = ({value, mode, schema, placeholder, onCommit}: Ex
         value={draft}
         placeholder={placeholder}
         spellCheck={false}
-        onChange={event => setDraft(event.target.value)}
-        onBlur={flush}
-        onKeyDown={event => {
-          if (event.key === 'Enter') flush();
-        }}
+        onChange={event => handleChange(event.target.value)}
+        onBlur={handleBlur}
       />
       {error !== null && <span className='text-[10px] text-red-400'>{error}</span>}
     </div>

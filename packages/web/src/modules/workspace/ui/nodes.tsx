@@ -3,6 +3,7 @@ import {useState} from 'react';
 
 import {runCommand, updateNode} from '@/modules/workspace/model/commands';
 import {$currentDialogue} from '@/modules/workspace/model/store';
+import {useLiveDraft} from '@/shared/hooks/useLiveDraft';
 import {cn} from '@/shared/lib/cn';
 
 import type {DialogFlowNode, GroupFlowNode} from '../flow/adapter';
@@ -19,7 +20,7 @@ const commitText = (nodeId: string, text: string): void => {
 
 const InlineText = ({nodeId, text, placeholder}: {nodeId: string; text: string; placeholder: string}): ReactElement => {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(text);
+  const {draft, handleChange, handleBlur} = useLiveDraft(text, next => commitText(nodeId, next));
 
   if (!editing) {
     return (
@@ -27,7 +28,6 @@ const InlineText = ({nodeId, text, placeholder}: {nodeId: string; text: string; 
         className={cn('line-clamp-2 min-h-4 text-xs', text === '' ? 'italic text-neutral-500' : 'text-neutral-200')}
         onDoubleClick={event => {
           event.stopPropagation();
-          setDraft(text);
           setEditing(true);
         }}
       >
@@ -42,21 +42,19 @@ const InlineText = ({nodeId, text, placeholder}: {nodeId: string; text: string; 
       className='nodrag w-full resize-none rounded border border-neutral-600 bg-neutral-900 p-1 text-xs text-neutral-200 outline-none'
       rows={3}
       value={draft}
-      onChange={event => setDraft(event.target.value)}
+      onChange={event => handleChange(event.target.value)}
       onBlur={() => {
-        commitText(nodeId, draft);
+        handleBlur();
         setEditing(false);
       }}
       onKeyDown={event => {
         event.stopPropagation();
 
-        if (event.key === 'Enter' && !event.shiftKey) {
+        if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Escape') {
           event.preventDefault();
-          commitText(nodeId, draft);
+          handleBlur();
           setEditing(false);
         }
-
-        if (event.key === 'Escape') setEditing(false);
       }}
     />
   );

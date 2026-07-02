@@ -20,7 +20,27 @@ const $history = atom<{past: ProjectDocument[]; future: ProjectDocument[]}>({pas
 export const $canUndo = computed($history, history => history.past.length > 0);
 export const $canRedo = computed($history, history => history.future.length > 0);
 
+// Live editing coalescing: consecutive commands sharing a key (e.g. keystrokes in one
+// input) merge into a single undo entry — only the first keystroke snapshots history.
+let ambientCoalesceKey: string | null = null;
+let activeCoalesceKey: string | null = null;
+
+export const coalesced = (key: string, fn: () => void): void => {
+  ambientCoalesceKey = key;
+
+  try {
+    fn();
+  } finally {
+    ambientCoalesceKey = null;
+  }
+};
+
+export const endCoalescing = (): void => {
+  activeCoalesceKey = null;
+};
+
 export const resetHistory = (): void => {
+  activeCoalesceKey = null;
   $history.set({past: [], future: []});
 };
 
@@ -34,8 +54,13 @@ export const runCommand = (mutate: (doc: ProjectDocument) => ProjectDocument): v
   if (next === doc) return;
 
   const {past} = $history.get();
+  const merge = ambientCoalesceKey !== null && ambientCoalesceKey === activeCoalesceKey && past.length > 0;
 
-  $history.set({past: [...past.slice(-(HISTORY_LIMIT - 1)), doc], future: []});
+  if (!merge) {
+    $history.set({past: [...past.slice(-(HISTORY_LIMIT - 1)), doc], future: []});
+  }
+
+  activeCoalesceKey = ambientCoalesceKey;
   $project.set({...next, meta: {...next.meta, updatedAt: new Date().toISOString()}});
 };
 
@@ -46,6 +71,7 @@ export const undo = (): void => {
 
   if (doc === null || previous === undefined) return;
 
+  activeCoalesceKey = null;
   $history.set({past: past.slice(0, -1), future: [doc, ...future]});
   $project.set(previous);
 };
@@ -57,6 +83,7 @@ export const redo = (): void => {
 
   if (doc === null || next === undefined) return;
 
+  activeCoalesceKey = null;
   $history.set({past: [...past, doc], future: rest});
   $project.set(next);
 };

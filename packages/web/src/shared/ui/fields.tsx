@@ -1,4 +1,5 @@
-import {useCommitted} from '@/shared/hooks/useCommitted';
+import {endCoalescing} from '@/modules/workspace/model/commands';
+import {useLiveDraft} from '@/shared/hooks/useLiveDraft';
 import {cn} from '@/shared/lib/cn';
 
 import type {ReactElement, ReactNode} from 'react';
@@ -26,7 +27,7 @@ export const TextInput = ({
   mono?: boolean;
   onCommit: (next: string) => void;
 }): ReactElement => {
-  const {draft, setDraft, flush} = useCommitted(value, onCommit);
+  const {draft, handleChange, handleBlur} = useLiveDraft(value, onCommit);
 
   return (
     <input
@@ -34,11 +35,8 @@ export const TextInput = ({
       value={draft}
       placeholder={placeholder}
       spellCheck={false}
-      onChange={event => setDraft(event.target.value)}
-      onBlur={flush}
-      onKeyDown={event => {
-        if (event.key === 'Enter') flush();
-      }}
+      onChange={event => handleChange(event.target.value)}
+      onBlur={handleBlur}
     />
   );
 };
@@ -56,7 +54,7 @@ export const TextArea = ({
   rows?: number;
   onCommit: (next: string) => void;
 }): ReactElement => {
-  const {draft, setDraft, flush} = useCommitted(value, onCommit);
+  const {draft, handleChange, handleBlur} = useLiveDraft(value, onCommit);
 
   return (
     <textarea
@@ -64,8 +62,8 @@ export const TextArea = ({
       value={draft}
       placeholder={placeholder}
       rows={rows}
-      onChange={event => setDraft(event.target.value)}
-      onBlur={flush}
+      onChange={event => handleChange(event.target.value)}
+      onBlur={handleBlur}
     />
   );
 };
@@ -92,22 +90,26 @@ export const Select = ({
 
 Select.displayName = 'Select';
 
-export const NumberInput = ({value, onCommit}: {value: number; onCommit: (next: number) => void}): ReactElement => {
-  const {draft, setDraft, flush} = useCommitted(String(value), next => {
-    const parsed = Number(next);
+const isNumeric = (raw: string): boolean => raw.trim() !== '' && !Number.isNaN(Number(raw));
 
-    if (!Number.isNaN(parsed)) onCommit(parsed);
-  });
+export const NumberInput = ({value, onCommit}: {value: number; onCommit: (next: number) => void}): ReactElement => {
+  const {draft, handleChange, handleBlur} = useLiveDraft(String(value), next => onCommit(Number(next)), isNumeric);
 
   return (
     <input
       className={INPUT_CLASS}
       value={draft}
       inputMode='numeric'
-      onChange={event => setDraft(event.target.value)}
-      onBlur={flush}
-      onKeyDown={event => {
-        if (event.key === 'Enter') flush();
+      onChange={event => handleChange(event.target.value)}
+      onBlur={() => {
+        // Never flush an unparseable draft into a number field.
+        if (isNumeric(draft)) {
+          handleBlur();
+          return;
+        }
+
+        endCoalescing();
+        handleChange(String(value));
       }}
     />
   );
