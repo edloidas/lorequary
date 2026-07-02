@@ -197,6 +197,11 @@ export default defineConfig({
     },
   },
   plugins: [tailwindcss(), react()],
+  resolve: {
+    alias: {
+      '@': new URL('src', import.meta.url).pathname,
+    },
+  },
   build: {
     chunkSizeWarningLimit: 750,
   },

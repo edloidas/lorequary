@@ -1,0 +1,55 @@
+import {parseCondition, parseEffect, validate} from '@lorequary/parser';
+import {useMemo} from 'react';
+
+import {useCommitted} from '@/shared/hooks/useCommitted';
+import {cn} from '@/shared/lib/cn';
+
+import type {VariableSchema} from '@lorequary/parser';
+import type {ReactElement} from 'react';
+
+export type ExpressionMode = 'condition' | 'effect';
+
+export const validateExpression = (source: string, mode: ExpressionMode, schema: VariableSchema): string | null => {
+  if (source.trim() === '') return null;
+
+  const parsed = mode === 'effect' ? parseEffect(source) : parseCondition(source);
+
+  if (!parsed.ok) return parsed.error.message;
+
+  return validate(parsed.value, schema)[0]?.message ?? null;
+};
+
+type ExpressionInputProps = {
+  value: string;
+  mode: ExpressionMode;
+  schema: VariableSchema;
+  placeholder?: string;
+  onCommit: (next: string) => void;
+};
+
+export const ExpressionInput = ({value, mode, schema, placeholder, onCommit}: ExpressionInputProps): ReactElement => {
+  const {draft, setDraft, flush} = useCommitted(value, onCommit);
+  const error = useMemo(() => validateExpression(draft, mode, schema), [draft, mode, schema]);
+
+  return (
+    <div className='flex flex-col gap-0.5'>
+      <input
+        className={cn(
+          'rounded border bg-neutral-900 px-2 py-1 font-mono text-xs text-neutral-200 outline-none',
+          error === null ? 'border-neutral-700 focus:border-neutral-500' : 'border-red-700 focus:border-red-500',
+        )}
+        value={draft}
+        placeholder={placeholder}
+        spellCheck={false}
+        onChange={event => setDraft(event.target.value)}
+        onBlur={flush}
+        onKeyDown={event => {
+          if (event.key === 'Enter') flush();
+        }}
+      />
+      {error !== null && <span className='text-[10px] text-red-400'>{error}</span>}
+    </div>
+  );
+};
+
+ExpressionInput.displayName = 'ExpressionInput';

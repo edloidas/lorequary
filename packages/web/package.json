@@ -5,17 +5,19 @@
   "homepage": "./",
   "type": "module",
   "dependencies": {
+    "@lorequary/core": "workspace:*",
+    "@lorequary/parser": "workspace:*",
     "@nanostores/deepmap": "^0.0.1",
     "@nanostores/react": "^1.1.0",
-    "@lorequary/core": "workspace:*",
     "@tanstack/react-query": "^5.96.2",
     "@tanstack/react-router": "^1.168.10",
+    "@xyflow/react": "^12.11.1",
     "clsx": "^2.1.1",
+    "idb": "^8.0.3",
     "nanoid": "^5.1.7",
     "nanostores": "^1.2.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "reactflow": "^11.11.4",
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {

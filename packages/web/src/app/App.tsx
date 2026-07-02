@@ -1,29 +1,123 @@
-import {type ReactElement} from 'react';
-import ReactFlow, {Background, Controls, type Edge, type Node} from 'reactflow';
-import 'reactflow/dist/style.css';
+import {useStore} from '@nanostores/react';
+import {useEffect, useState} from 'react';
 
-const initialNodes: Node[] = [
-  {id: '1', position: {x: 250, y: 0}, data: {label: 'NPC: Hello, traveler!'}, type: 'input'},
-  {id: '2', position: {x: 75, y: 150}, data: {label: 'Player: Who are you?'}},
-  {id: '3', position: {x: 425, y: 150}, data: {label: 'Player: Farewell.'}},
-  {id: '4', position: {x: 75, y: 300}, data: {label: 'NPC: I am the keeper of dialogs.'}},
-  {id: '5', position: {x: 425, y: 300}, data: {label: '[End]'}, type: 'output'},
-];
+import {Inspector} from '@/modules/inspector/ui/Inspector';
+import {startAutosave} from '@/modules/persistence/autosave';
+import {loadLastProject, saveProject} from '@/modules/persistence/db';
+import {$project, createDefaultProject} from '@/modules/project/model/store';
+import {Sidebar} from '@/modules/project/ui/Sidebar';
+import {
+  deleteEdges,
+  deleteNodes,
+  duplicateNodes,
+  redo,
+  resetHistory,
+  runCommand,
+  undo,
+} from '@/modules/workspace/model/commands';
+import {$currentDialogue, $currentDialogueId, $selection, clearSelection} from '@/modules/workspace/model/store';
+import {Canvas} from '@/modules/workspace/ui/Canvas';
+import {Toolbar} from '@/modules/workspace/ui/Toolbar';
 
-const initialEdges: Edge[] = [
-  {id: 'e1-2', source: '1', target: '2'},
-  {id: 'e1-3', source: '1', target: '3'},
-  {id: 'e2-4', source: '2', target: '4'},
-  {id: 'e3-5', source: '3', target: '5'},
-];
+import type {ReactElement} from 'react';
 
-export const App = (): ReactElement => (
-  <div className='w-screen h-screen'>
-    <ReactFlow nodes={initialNodes} edges={initialEdges} fitView>
-      <Background />
-      <Controls />
-    </ReactFlow>
-  </div>
-);
+const isEditableTarget = (target: EventTarget | null): boolean =>
+  target instanceof HTMLElement &&
+  (target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT' ||
+    target.isContentEditable);
+
+const handleShortcut = (event: KeyboardEvent): void => {
+  const mod = event.metaKey || event.ctrlKey;
+
+  if (mod && event.key.toLowerCase() === 'z') {
+    event.preventDefault();
+
+    if (event.shiftKey) {
+      redo();
+    } else {
+      undo();
+    }
+
+    return;
+  }
+
+  if (mod && event.key.toLowerCase() === 'y') {
+    event.preventDefault();
+    redo();
+    return;
+  }
+
+  if (isEditableTarget(event.target)) return;
+
+  const dialogue = $currentDialogue.get();
+  const selection = $selection.get();
+
+  if (dialogue === null) return;
+
+  const hasSelection = selection.nodeIds.length > 0 || selection.edgeIds.length > 0;
+
+  if ((event.key === 'Delete' || event.key === 'Backspace') && hasSelection) {
+    event.preventDefault();
+    runCommand(doc => deleteEdges(deleteNodes(doc, dialogue.id, selection.nodeIds), dialogue.id, selection.edgeIds));
+    clearSelection();
+    return;
+  }
+
+  if (mod && event.key.toLowerCase() === 'd' && selection.nodeIds.length > 0) {
+    event.preventDefault();
+    runCommand(doc => duplicateNodes(doc, dialogue.id, selection.nodeIds));
+  }
+};
+
+export const App = (): ReactElement => {
+  const project = useStore($project);
+  const [booted, setBooted] = useState(false);
+
+  useEffect(() => {
+    let stopAutosave: (() => void) | undefined;
+    let cancelled = false;
+
+    void loadLastProject().then(loaded => {
+      if (cancelled) return;
+
+      const doc = loaded ?? createDefaultProject('My Project');
+
+      $project.set(doc);
+      $currentDialogueId.set(doc.dialogues[0]?.id ?? null);
+      resetHistory();
+      stopAutosave = startAutosave($project, next => void saveProject(next));
+      setBooted(true);
+    });
+
+    window.addEventListener('keydown', handleShortcut);
+
+    return () => {
+      cancelled = true;
+      stopAutosave?.();
+      window.removeEventListener('keydown', handleShortcut);
+    };
+  }, []);
+
+  if (!booted || project === null) {
+    return (
+      <div className='flex h-screen items-center justify-center bg-neutral-950 text-sm text-neutral-500'>
+        Loading project…
+      </div>
+    );
+  }
+
+  return (
+    <div className='flex h-screen bg-neutral-950 text-neutral-200'>
+      <Sidebar />
+      <main className='flex min-w-0 flex-1 flex-col'>
+        <Toolbar />
+        <Canvas />
+      </main>
+      <Inspector />
+    </div>
+  );
+};
 
 App.displayName = 'App';
