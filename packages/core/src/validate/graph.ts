@@ -143,7 +143,8 @@ class ProjectValidator {
     for (const option of node.options) {
       const location = {...here, optionId: option.id};
 
-      if (!nodeIds.has(option.targetNodeId)) {
+      // Options with a skill check route through success/failure targets instead.
+      if (option.skillCheck === undefined && !nodeIds.has(option.targetNodeId)) {
         this.report('error', 'orphaned-option', `Option targets missing node \`${option.targetNodeId}\``, location);
       }
 
