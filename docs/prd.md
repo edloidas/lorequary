@@ -258,10 +258,10 @@ type DialogNode = {
   
   // Gating
   passiveCheck?: PassiveCheck;   // skill threshold for visibility
-  conditions?: Condition[];      // additional entry conditions
+  conditions?: string[];         // entry condition expressions (implicit AND)
   
   // Side effects
-  actions?: Action[];            // execute on node enter
+  effects?: string[];            // effect expressions, executed on node enter
   
   // Choice-specific
   options?: ChoiceOption[];      // only for kind: 'choice'
@@ -271,7 +271,7 @@ type DialogNode = {
 
 type TextVariant = {
   id: string;
-  conditions: Condition[];       // when to use this variant
+  conditions: string[];          // condition expressions — when to use this variant
   text: string;                  // alternative text
   lineKey?: string;              // localization key for this variant
 };
@@ -287,7 +287,7 @@ type ChoiceOption = {
   targetNodeId: string;
   
   // Availability
-  conditions?: Condition[];
+  conditions?: string[];         // condition expressions (implicit AND)
   visibility: ChoiceVisibility;
   lockReason?: string;           // shown to player when locked_visible
   
@@ -295,7 +295,7 @@ type ChoiceOption = {
   skillCheck?: SkillCheck;
   
   // Side effects on selection
-  actions?: Action[];
+  effects?: string[];            // effect expressions
 };
 
 type ChoiceVisibility =
@@ -316,7 +316,7 @@ type SkillCheck = {
 
 type CheckModifier = {
   id: string;
-  condition: Condition;
+  condition: string;             // condition expression
   bonus: number;                 // positive or negative
   description: string;           // shown to player: "Found the diary (+1)"
 };
@@ -327,41 +327,22 @@ type PassiveCheck = {
 };
 ```
 
-### Conditions and Actions
+### Conditions and Effects
 
-```typescript
-// Conditions support complex boolean logic
-type Condition =
-  | ComparisonCondition
-  | LogicalCondition
-  | HasCondition;
+Conditions and effects are stored as **plain expression strings**, parsed, validated, and evaluated by `@lorequary/parser` (see `parser.md` for the full language spec):
 
-type ComparisonCondition = {
-  type: 'comparison';
-  variableKey: string;
-  operator: 'eq' | 'neq' | 'gt' | 'lt' | 'gte' | 'lte';
-  value: string | number | boolean;
-};
-
-type LogicalCondition = {
-  type: 'and' | 'or';
-  conditions: Condition[];
-};
-
-type HasCondition = {
-  type: 'has';
-  variableKey: string;           // for enum: checks if value is set / non-empty
-};
-
-// Actions are side effects attached to nodes or choice options
-type Action = {
-  type: 'set' | 'increment' | 'decrement' | 'toggle' | 'emit_event';
-  variableKey?: string;
-  value?: string | number | boolean;
-  eventName?: string;
-  eventPayload?: Record<string, unknown>;
-};
+```json
+{
+  "conditions": ["hero.money > 50 && npc.aurelia.attitude >= 5"],
+  "effects": ["hero.money += 100"]
+}
 ```
+
+- A **condition** is a boolean expression: comparisons, `&&`/`||`/`!`, arithmetic, function calls (`random`, `seenCount`), bare-path shorthand (`quest.baron_alive` ≡ `quest.baron_alive == true`).
+- An **effect** is a single assignment: `path op expression` with `=`, `+=`, `-=`, `*=`, `/=`.
+- An array of condition strings is implicitly AND-ed; the editor composes AND/OR visually while individual strings stay simple.
+- The editor validates expressions on every keystroke against the variable registry; the game runtime parses the same strings at load time and evaluates them against its own state resolver.
+- Game-event emission (`emit_event`) is not part of the expression language and will be designed separately.
 
 ### Edges
 
@@ -373,7 +354,7 @@ type DialogEdge = {
   sourceHandle?: string;       // for choice options or check outcomes
   targetHandle?: string;
   label?: string;
-  conditions?: Condition[];    // edge-level conditions (evaluated during traversal)
+  conditions?: string[];       // edge-level condition expressions (evaluated during traversal)
   priority?: number;           // for ordering when multiple edges are valid
 };
 ```
@@ -563,7 +544,7 @@ modules/
 │
 ├── inspector/          # right panel — node property editors
 │   ├── ui/             # NodeInspector, LineInspector, ChoiceInspector,
-│   │                   # ConditionEditor, ActionEditor, SkillCheckEditor,
+│   │                   # ConditionEditor, EffectEditor, SkillCheckEditor,
 │   │                   # CharacterPicker, ExpressionPicker
 │   └── index.ts
 │
