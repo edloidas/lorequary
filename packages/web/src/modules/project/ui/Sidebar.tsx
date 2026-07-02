@@ -1,7 +1,13 @@
 import {useStore} from '@nanostores/react';
 import {nanoid} from 'nanoid';
-import {useState} from 'react';
+import {useRef, useState} from 'react';
 
+import {
+  applyImportedProject,
+  exportProjectFile,
+  exportRuntimeFile,
+  importProjectText,
+} from '@/modules/persistence/files';
 import {$project} from '@/modules/project/model/store';
 import {
   addDialogue,
@@ -357,6 +363,54 @@ VariablesTab.displayName = 'VariablesTab';
 // * Sidebar
 //
 
+const ProjectActions = (): ReactElement | null => {
+  const project = useStore($project);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importError, setImportError] = useState<string | undefined>(undefined);
+
+  if (project === null) return null;
+
+  const handleImport = async (file: File): Promise<void> => {
+    const result = importProjectText(await file.text());
+
+    if (!result.ok) {
+      const issues = result.error.issues?.slice(0, 3).join('; ') ?? '';
+
+      setImportError(`${result.error.message}${issues === '' ? '' : ` — ${issues}`}`);
+      return;
+    }
+
+    setImportError(undefined);
+    applyImportedProject(result.value);
+  };
+
+  return (
+    <div className='flex flex-col gap-1 border-t border-neutral-800 p-2'>
+      <div className='flex gap-1'>
+        <SmallButton onClick={() => exportProjectFile(project)}>Export .lorequary</SmallButton>
+        <SmallButton onClick={() => exportRuntimeFile(project)}>Export IR</SmallButton>
+        <SmallButton onClick={() => fileInputRef.current?.click()}>Import</SmallButton>
+      </div>
+      {importError !== undefined && <p className='text-[10px] leading-snug text-red-400'>{importError}</p>}
+      <input
+        ref={fileInputRef}
+        type='file'
+        accept='.lorequary,application/json'
+        className='hidden'
+        onChange={event => {
+          const file = event.target.files?.[0];
+
+          event.target.value = '';
+
+          if (file !== undefined) void handleImport(file);
+        }}
+      />
+    </div>
+  );
+};
+
+ProjectActions.displayName = 'ProjectActions';
+
 const TABS: {id: Tab; label: string}[] = [
   {id: 'dialogues', label: 'Dialogues'},
   {id: 'characters', label: 'Cast'},
@@ -391,6 +445,7 @@ export const Sidebar = (): ReactElement => {
         {tab === 'characters' && <CharactersTab />}
         {tab === 'variables' && <VariablesTab />}
       </div>
+      <ProjectActions />
     </aside>
   );
 };
