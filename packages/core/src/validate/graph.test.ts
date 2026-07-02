@@ -73,6 +73,41 @@ describe('validateProject', () => {
     expect(issues[0]).toMatchObject({nodeId: 'node_1', optionId: 'o1'});
   });
 
+  it('accepts an empty direct target on options that carry a skill check', () => {
+    const project = buildProject({
+      dialogues: [
+        buildDialogue({
+          nodes: [
+            buildNode({
+              id: 'node_1',
+              kind: 'choice',
+              options: [
+                {
+                  id: 'o1',
+                  text: 'Try',
+                  targetNodeId: '',
+                  visibility: 'available',
+                  skillCheck: {
+                    skillId: 'var_money',
+                    baseDifficulty: 10,
+                    checkType: 'white',
+                    successTargetId: 'node_2',
+                    failureTargetId: 'node_2',
+                  },
+                },
+              ],
+            }),
+            buildNode({id: 'node_2'}),
+          ],
+        }),
+      ],
+    });
+
+    const issues = validateProject(project).filter(i => i.code === 'orphaned-option');
+
+    expect(issues).toHaveLength(0);
+  });
+
   it('reports a choice node with no options', () => {
     const project = buildProject({
       dialogues: [buildDialogue({nodes: [buildNode({id: 'node_1', kind: 'choice'}), buildNode({id: 'node_2'})]})],
