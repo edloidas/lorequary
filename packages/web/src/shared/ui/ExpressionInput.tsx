@@ -40,8 +40,8 @@ export const ExpressionInput = ({value, mode, schema, placeholder, onCommit}: Ex
     <div className='flex flex-col gap-0.5'>
       <input
         className={cn(
-          'rounded border bg-neutral-900 px-2 py-1 font-mono text-xs text-neutral-200 outline-none',
-          error === null ? 'border-neutral-700 focus:border-neutral-500' : 'border-red-700 focus:border-red-500',
+          'rounded border bg-ink-950 px-2 py-1 font-mono text-xs text-zinc-200 outline-none',
+          error === null ? 'border-ink-600 focus:border-sky-700' : 'border-red-700 focus:border-red-500',
         )}
         value={draft}
         placeholder={placeholder}

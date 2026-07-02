@@ -1,1 +1,174 @@
 @import 'tailwindcss';
+
+@theme {
+  --color-ink-950: #0a0c12;
+  --color-ink-900: #10131b;
+  --color-ink-850: #141823;
+  --color-ink-800: #1a1f2c;
+  --color-ink-700: #252c3d;
+  --color-ink-600: #333c52;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ink-600) transparent;
+}
+
+body {
+  background-color: var(--color-ink-950);
+}
+
+/*
+ * ReactFlow overrides — cursor priorities, handle affordances, edge palette.
+ */
+
+.react-flow__pane {
+  cursor: default;
+}
+
+.react-flow__pane.dragging {
+  cursor: grabbing;
+}
+
+/* Whole node stays draggable, but only the header advertises it. */
+.react-flow__node {
+  cursor: default;
+}
+
+.react-flow__node.dragging,
+.react-flow__node.dragging .node-drag-header {
+  cursor: grabbing;
+}
+
+.node-drag-header {
+  cursor: grab;
+}
+
+.react-flow__handle {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  border: 2px solid #64748b;
+  background: #0f1420;
+  transition:
+    scale 0.12s ease,
+    border-color 0.12s ease,
+    background-color 0.12s ease,
+    box-shadow 0.12s ease;
+  cursor: crosshair;
+}
+
+/* Enlarged invisible hit area so pins are easy to grab. */
+.react-flow__handle::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 9999px;
+}
+
+.react-flow__handle:hover,
+.react-flow__handle.connectingfrom {
+  scale: 1.45;
+  border-color: #22d3ee;
+  background: #155e75;
+  box-shadow: 0 0 10px 1px rgb(34 211 238 / 0.55);
+}
+
+.react-flow__handle.connectingto,
+.react-flow__handle.valid {
+  scale: 1.45;
+  border-color: #34d399;
+  background: #065f46;
+  box-shadow: 0 0 10px 1px rgb(52 211 153 / 0.6);
+}
+
+.handle-option {
+  border-color: #8b5cf6;
+}
+
+/* Unconnected source pins render a subtle pulse to advertise quick-add. */
+.handle-open {
+  border-color: #38bdf8;
+  background: #082f49;
+}
+
+.react-flow__edge-path {
+  stroke: #4c566b;
+  stroke-width: 1.75;
+}
+
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: #94a3b8;
+}
+
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:focus .react-flow__edge-path {
+  stroke: #22d3ee;
+  filter: drop-shadow(0 0 3px rgb(34 211 238 / 0.5));
+}
+
+.edge-option .react-flow__edge-path {
+  stroke: #7c74d4;
+}
+
+.edge-check-success .react-flow__edge-path {
+  stroke: #10b981;
+  stroke-dasharray: 7 5;
+  stroke-width: 1.5;
+}
+
+.edge-check-failure .react-flow__edge-path {
+  stroke: #f43f5e;
+  stroke-dasharray: 7 5;
+  stroke-width: 1.5;
+}
+
+.react-flow__connection-path {
+  stroke: #22d3ee;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.react-flow__edge-textbg {
+  fill: #0a0c12;
+  fill-opacity: 0.85;
+}
+
+.react-flow__edge-text {
+  fill: #8b93a7;
+  font-size: 10px;
+}
+
+/* Playtest: the active node glows, the rest recede. */
+.react-flow__node.playtest-active {
+  filter: drop-shadow(0 0 12px rgb(52 211 153 / 0.45));
+}
+
+.react-flow__node.playtest-dim {
+  opacity: 0.35;
+  filter: saturate(0.4);
+}
+
+.react-flow__controls {
+  box-shadow: none;
+}
+
+.react-flow__controls-button {
+  background: var(--color-ink-850);
+  border-bottom: 1px solid var(--color-ink-700);
+}
+
+.react-flow__controls-button:hover {
+  background: var(--color-ink-800);
+}
+
+.react-flow__minimap {
+  background: var(--color-ink-900);
+  border: 1px solid var(--color-ink-700);
+  border-radius: 8px;
+  overflow: hidden;
+}

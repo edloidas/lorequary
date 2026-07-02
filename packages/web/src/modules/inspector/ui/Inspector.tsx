@@ -99,7 +99,7 @@ const VariantsEditor = ({
   <Field label='Text variants'>
     <div className='flex flex-col gap-2'>
       {variants.map(variant => (
-        <div key={variant.id} className='flex flex-col gap-1 rounded border border-neutral-800 p-2'>
+        <div key={variant.id} className='flex flex-col gap-1 rounded border border-ink-800 p-2'>
           <ExpressionInput
             value={variant.conditions[0] ?? ''}
             mode='condition'
@@ -203,7 +203,7 @@ const SkillCheckEditor = ({
       <Field label='Modifiers'>
         <div className='flex flex-col gap-2'>
           {(check.modifiers ?? []).map(modifier => (
-            <div key={modifier.id} className='flex flex-col gap-1 rounded border border-neutral-800 p-2'>
+            <div key={modifier.id} className='flex flex-col gap-1 rounded border border-ink-800 p-2'>
               <ExpressionInput
                 value={modifier.condition}
                 mode='condition'
@@ -299,7 +299,7 @@ const OptionEditor = ({
   };
 
   return (
-    <div className='flex flex-col gap-2 rounded border border-neutral-800 bg-neutral-900/40 p-2'>
+    <div className='flex flex-col gap-2 rounded border border-ink-800 bg-ink-900/60 p-2'>
       <TextInput value={option.text} placeholder='Option text' onCommit={next => patchOption({text: next})} />
       <div className='grid grid-cols-2 gap-2'>
         <Field label='Target'>
@@ -417,10 +417,10 @@ const NodeInspector = ({
   return (
     <div className='flex flex-col gap-3'>
       <div className='flex items-center justify-between'>
-        <span className='text-xs font-semibold uppercase tracking-wide text-neutral-400'>
+        <span className='text-xs font-semibold uppercase tracking-wide text-zinc-400'>
           {node.kind === 'choice' ? 'Choice node' : 'Line node'}
         </span>
-        <span className='font-mono text-[10px] text-neutral-600'>{node.id}</span>
+        <span className='font-mono text-[10px] text-zinc-600'>{node.id}</span>
       </div>
 
       <Field label='Speaker'>
@@ -527,7 +527,7 @@ const NodeInspector = ({
         </Field>
       )}
 
-      <div className='flex gap-2 border-t border-neutral-800 pt-3'>
+      <div className='flex gap-2 border-t border-ink-800 pt-3'>
         {dialogue.entryNodeId !== node.id && (
           <SmallButton onClick={() => runCommand(doc => setEntryNode(doc, dialogue.id, node.id))}>
             Set as entry
@@ -555,7 +555,7 @@ NodeInspector.displayName = 'NodeInspector';
 
 const DialogueInspector = ({dialogue}: {dialogue: Dialogue}): ReactElement => (
   <div className='flex flex-col gap-3'>
-    <span className='text-xs font-semibold uppercase tracking-wide text-neutral-400'>Dialogue</span>
+    <span className='text-xs font-semibold uppercase tracking-wide text-zinc-400'>Dialogue</span>
     <Field label='Name'>
       <TextInput value={dialogue.name} onCommit={next => runCommand(doc => renameDialogue(doc, dialogue.id, next))} />
     </Field>
@@ -566,7 +566,7 @@ const DialogueInspector = ({dialogue}: {dialogue: Dialogue}): ReactElement => (
         onChange={next => runCommand(doc => setEntryNode(doc, dialogue.id, next))}
       />
     </Field>
-    <p className='text-[11px] leading-relaxed text-neutral-500'>
+    <p className='text-[11px] leading-relaxed text-zinc-500'>
       Select a node on the canvas to edit its properties. Double-click a node to edit its text inline.
     </p>
   </div>
@@ -585,7 +585,7 @@ export const Inspector = (): ReactElement | null => {
     selection.nodeIds.length === 1 ? dialogue.nodes.find(node => node.id === selection.nodeIds[0]) : undefined;
 
   return (
-    <aside className='w-80 shrink-0 overflow-y-auto border-l border-neutral-800 bg-neutral-900 p-3'>
+    <aside className='h-full w-full overflow-y-auto border-l border-ink-800 bg-ink-900 p-3'>
       {selectedNode === undefined ? (
         <DialogueInspector dialogue={dialogue} />
       ) : (

@@ -32,16 +32,16 @@ export const ValidationPanel = (): ReactElement | null => {
   if (!open || project === null) return null;
 
   return (
-    <div className='flex max-h-40 flex-col overflow-y-auto border-t border-neutral-800 bg-neutral-900'>
+    <div className='flex max-h-40 flex-col overflow-y-auto border-t border-ink-800 bg-ink-950'>
       <div className='flex items-center gap-2 px-3 py-1.5'>
-        <span className='text-[11px] font-semibold uppercase tracking-wide text-neutral-400'>Validation</span>
-        <span className='text-[11px] text-neutral-500'>
+        <span className='text-[11px] font-semibold uppercase tracking-wide text-zinc-400'>Validation</span>
+        <span className='text-[11px] text-zinc-500'>
           {issues.length === 0 ? 'No issues — the project is valid' : `${issues.length} issue(s)`}
         </span>
         <div className='flex-1' />
         <button
           type='button'
-          className='text-[11px] text-neutral-500 hover:text-neutral-300'
+          className='text-[11px] text-zinc-500 hover:text-zinc-300'
           onClick={() => $validationOpen.set(false)}
         >
           ✕ Close
@@ -53,7 +53,7 @@ export const ValidationPanel = (): ReactElement | null => {
           // eslint-disable-next-line react/no-array-index-key
           key={index}
           type='button'
-          className='flex items-baseline gap-2 px-3 py-1 text-left hover:bg-neutral-800/60'
+          className='flex items-baseline gap-2 px-3 py-1 text-left hover:bg-ink-800/60'
           onClick={() => focusIssue(issue)}
         >
           <span
@@ -64,8 +64,8 @@ export const ValidationPanel = (): ReactElement | null => {
           >
             {issue.severity}
           </span>
-          <span className='shrink-0 text-[11px] text-neutral-500'>{formatIssueLocation(issue, project)}</span>
-          <span className='truncate text-[11px] text-neutral-300'>{issue.message}</span>
+          <span className='shrink-0 text-[11px] text-zinc-500'>{formatIssueLocation(issue, project)}</span>
+          <span className='truncate text-[11px] text-zinc-300'>{issue.message}</span>
         </button>
       ))}
     </div>
