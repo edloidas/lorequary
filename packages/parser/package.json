@@ -1,18 +1,57 @@
 {
   "name": "@lorequary/parser",
   "version": "0.1.0",
+  "description": "Expression language parser, validator, and evaluator for game dialogue conditions and effects",
+  "author": "Mikita Taukachou",
+  "license": "MIT",
+  "homepage": "https://github.com/edloidas/lorequary/tree/main/packages/parser#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edloidas/lorequary.git",
+    "directory": "packages/parser"
+  },
+  "bugs": {
+    "url": "https://github.com/edloidas/lorequary/issues"
+  },
+  "keywords": [
+    "parser",
+    "expression",
+    "dsl",
+    "dialogue",
+    "narrative",
+    "game",
+    "interactive-fiction"
+  ],
   "type": "module",
+  "sideEffects": false,
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
   },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.mjs",
+    "types": "./dist/index.d.mts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.mts",
+        "import": "./dist/index.mjs"
+      }
+    }
+  },
   "scripts": {
+    "build": "vp run clean && vp pack src/index.ts --dts",
     "check": "vp check && vp run typecheck",
-    "clean": "rm -rf coverage reports",
+    "clean": "rm -rf dist coverage reports",
     "typecheck": "tsgo --noEmit",
     "test": "vp test --run",
-    "test:ci": "vp test --run --coverage"
+    "test:ci": "vp test --run --coverage",
+    "prepublishOnly": "vp run check && vp run test && vp run build",
+    "release:dry": "pnpm publish --dry-run --no-git-checks"
   },
   "devDependencies": {
     "@typescript/native-preview": "7.0.0-dev.20260401.1",
