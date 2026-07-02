@@ -56,3 +56,7 @@ export type Effect = {
 };
 
 export type ASTNode = Expr | Assignment | Condition | Effect;
+
+// Public API aliases — avoid clashing with domain-level Condition/Effect names in consumers.
+export type ConditionNode = Condition;
+export type EffectNode = Effect;
