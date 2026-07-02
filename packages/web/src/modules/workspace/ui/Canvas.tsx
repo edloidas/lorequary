@@ -8,22 +8,48 @@ import {
   addNode,
   deleteNodes,
   duplicateNodes,
+  renameGroup,
   runCommand,
   moveNodes,
   setEntryNode,
+  ungroupNodes,
 } from '@/modules/workspace/model/commands';
-import {$contextMenu, $currentDialogue, $dragPositions, $selection} from '@/modules/workspace/model/store';
+import {
+  $activeGroupId,
+  $contextMenu,
+  $currentDialogue,
+  $dragPositions,
+  $selection,
+  clearSelection,
+} from '@/modules/workspace/model/store';
 import {$focusNodeId} from '@/modules/workspace/model/validation';
 
-import type {DialogFlowNode} from '../flow/adapter';
+import type {FlowNode} from '../flow/adapter';
 import type {Connection, EdgeChange, NodeChange, NodeTypes} from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type {MouseEvent as ReactMouseEvent, ReactElement} from 'react';
 
 import {toFlowEdges, toFlowNodes} from '../flow/adapter';
-import {ChoiceNode, LineNode} from './nodes';
+import {ChoiceNode, GroupNode, LineNode} from './nodes';
 
-const NODE_TYPES: NodeTypes = {line: LineNode, choice: ChoiceNode};
+const NODE_TYPES: NodeTypes = {line: LineNode, choice: ChoiceNode, group: GroupNode};
+
+const ITEM_CLASS = 'px-3 py-1 text-left text-xs text-neutral-200 hover:bg-neutral-700';
+
+const MenuItem = ({label, danger, onPick}: {label: string; danger?: boolean; onPick: () => void}): ReactElement => (
+  <button
+    type='button'
+    className={danger === true ? `${ITEM_CLASS} text-red-400` : ITEM_CLASS}
+    onClick={() => {
+      onPick();
+      $contextMenu.set(null);
+    }}
+  >
+    {label}
+  </button>
+);
+
+MenuItem.displayName = 'MenuItem';
 
 const ContextMenu = (): ReactElement | null => {
   const menu = useStore($contextMenu);
@@ -31,72 +57,78 @@ const ContextMenu = (): ReactElement | null => {
 
   if (menu === null || dialogue === null) return null;
 
-  const close = (): void => $contextMenu.set(null);
+  const renderItems = (): ReactElement => {
+    if (menu.type === 'pane') {
+      const groupId = $activeGroupId.get() ?? undefined;
 
-  const itemClass = 'px-3 py-1 text-left text-xs text-neutral-200 hover:bg-neutral-700';
+      return (
+        <>
+          <MenuItem
+            label='+ Line here'
+            onPick={() =>
+              runCommand(doc => addNode(doc, dialogue.id, 'line', {x: menu.canvasX, y: menu.canvasY}, groupId))
+            }
+          />
+          <MenuItem
+            label='+ Choice here'
+            onPick={() =>
+              runCommand(doc => addNode(doc, dialogue.id, 'choice', {x: menu.canvasX, y: menu.canvasY}, groupId))
+            }
+          />
+        </>
+      );
+    }
+
+    const group = dialogue.editor.groups?.find(g => g.id === menu.nodeId);
+
+    if (group !== undefined) {
+      return (
+        <>
+          <MenuItem
+            label='Open group'
+            onPick={() => {
+              $activeGroupId.set(menu.nodeId);
+              clearSelection();
+            }}
+          />
+          <MenuItem
+            label='Rename'
+            onPick={() => {
+              const name = window.prompt('Group name', group.name);
+
+              if (name !== null && name.trim() !== '') {
+                runCommand(doc => renameGroup(doc, dialogue.id, menu.nodeId, name.trim()));
+              }
+            }}
+          />
+          <MenuItem
+            danger
+            label='Ungroup'
+            onPick={() => runCommand(doc => ungroupNodes(doc, dialogue.id, menu.nodeId))}
+          />
+        </>
+      );
+    }
+
+    return (
+      <>
+        <MenuItem label='Set as entry' onPick={() => runCommand(doc => setEntryNode(doc, dialogue.id, menu.nodeId))} />
+        <MenuItem label='Duplicate' onPick={() => runCommand(doc => duplicateNodes(doc, dialogue.id, [menu.nodeId]))} />
+        <MenuItem
+          danger
+          label='Delete'
+          onPick={() => runCommand(doc => deleteNodes(doc, dialogue.id, [menu.nodeId]))}
+        />
+      </>
+    );
+  };
 
   return (
     <div
       className='absolute z-50 flex w-40 flex-col overflow-hidden rounded border border-neutral-700 bg-neutral-800 py-1 shadow-xl'
       style={{left: menu.x, top: menu.y}}
     >
-      {menu.type === 'pane' ? (
-        <>
-          <button
-            type='button'
-            className={itemClass}
-            onClick={() => {
-              runCommand(doc => addNode(doc, dialogue.id, 'line', {x: menu.canvasX, y: menu.canvasY}));
-              close();
-            }}
-          >
-            + Line here
-          </button>
-          <button
-            type='button'
-            className={itemClass}
-            onClick={() => {
-              runCommand(doc => addNode(doc, dialogue.id, 'choice', {x: menu.canvasX, y: menu.canvasY}));
-              close();
-            }}
-          >
-            + Choice here
-          </button>
-        </>
-      ) : (
-        <>
-          <button
-            type='button'
-            className={itemClass}
-            onClick={() => {
-              runCommand(doc => setEntryNode(doc, dialogue.id, menu.nodeId));
-              close();
-            }}
-          >
-            Set as entry
-          </button>
-          <button
-            type='button'
-            className={itemClass}
-            onClick={() => {
-              runCommand(doc => duplicateNodes(doc, dialogue.id, [menu.nodeId]));
-              close();
-            }}
-          >
-            Duplicate
-          </button>
-          <button
-            type='button'
-            className={`${itemClass} text-red-400`}
-            onClick={() => {
-              runCommand(doc => deleteNodes(doc, dialogue.id, [menu.nodeId]));
-              close();
-            }}
-          >
-            Delete
-          </button>
-        </>
-      )}
+      {renderItems()}
     </div>
   );
 };
@@ -109,7 +141,9 @@ const CanvasInner = (): ReactElement | null => {
   const selection = useStore($selection);
   const dragPositions = useStore($dragPositions);
   const focusNodeId = useStore($focusNodeId);
+  const activeGroupId = useStore($activeGroupId);
   const {screenToFlowPosition, setCenter} = useReactFlow();
+  const activeGroup = dialogue?.editor.groups?.find(group => group.id === activeGroupId);
 
   useEffect(() => {
     if (focusNodeId === null || dialogue === null) return;
@@ -126,20 +160,20 @@ const CanvasInner = (): ReactElement | null => {
   const nodes = useMemo(() => {
     if (dialogue === null || project === null) return [];
 
-    return toFlowNodes(dialogue, project.characters, new Set(selection.nodeIds)).map(node => {
+    return toFlowNodes(dialogue, project.characters, new Set(selection.nodeIds), activeGroupId).map(node => {
       const dragged = dragPositions[node.id];
 
       return dragged === undefined ? node : {...node, position: dragged};
     });
-  }, [dialogue, project, selection.nodeIds, dragPositions]);
+  }, [dialogue, project, selection.nodeIds, dragPositions, activeGroupId]);
 
   const edges = useMemo(
-    () => (dialogue === null ? [] : toFlowEdges(dialogue, new Set(selection.edgeIds))),
-    [dialogue, selection.edgeIds],
+    () => (dialogue === null ? [] : toFlowEdges(dialogue, new Set(selection.edgeIds), activeGroupId)),
+    [dialogue, selection.edgeIds, activeGroupId],
   );
 
   const handleNodesChange = useCallback(
-    (changes: NodeChange<DialogFlowNode>[]) => {
+    (changes: NodeChange<FlowNode>[]) => {
       if (dialogue === null) return;
 
       const settled: Record<string, {x: number; y: number}> = {};
@@ -208,6 +242,11 @@ const CanvasInner = (): ReactElement | null => {
     (connection: Connection) => {
       if (dialogue === null) return;
 
+      // Group stubs are visual-only — connections must target real nodes.
+      const isGroup = (id: string): boolean => dialogue.editor.groups?.some(group => group.id === id) === true;
+
+      if (isGroup(connection.source) || isGroup(connection.target)) return;
+
       runCommand(doc =>
         addEdge(doc, dialogue.id, {
           source: connection.source,
@@ -237,7 +276,7 @@ const CanvasInner = (): ReactElement | null => {
     [screenToFlowPosition],
   );
 
-  const handleNodeContextMenu = useCallback((event: ReactMouseEvent, node: DialogFlowNode) => {
+  const handleNodeContextMenu = useCallback((event: ReactMouseEvent, node: FlowNode) => {
     event.preventDefault();
 
     const bounds = (event.currentTarget as HTMLElement).closest('.react-flow')?.getBoundingClientRect();
@@ -269,12 +308,34 @@ const CanvasInner = (): ReactElement | null => {
         onConnect={handleConnect}
         onPaneContextMenu={handlePaneContextMenu}
         onNodeContextMenu={handleNodeContextMenu}
+        onNodeDoubleClick={(_, node) => {
+          if (node.type === 'group') {
+            $activeGroupId.set(node.id);
+            clearSelection();
+          }
+        }}
         onPaneClick={() => $contextMenu.set(null)}
         onMoveStart={() => $contextMenu.set(null)}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
         <Controls showInteractive={false} />
       </ReactFlow>
+      {activeGroup !== undefined && (
+        <div className='absolute left-2 top-2 z-40 flex items-center gap-1 rounded border border-neutral-700 bg-neutral-800/90 px-2 py-1 text-xs'>
+          <button
+            type='button'
+            className='text-neutral-400 hover:text-neutral-100'
+            onClick={() => {
+              $activeGroupId.set(null);
+              clearSelection();
+            }}
+          >
+            {dialogue.name}
+          </button>
+          <span className='text-neutral-600'>▸</span>
+          <span className='font-semibold text-neutral-100'>▣ {activeGroup.name}</span>
+        </div>
+      )}
       <ContextMenu />
     </div>
   );

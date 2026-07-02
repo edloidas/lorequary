@@ -26,6 +26,9 @@ export const clearSelection = (): void => {
 // Live positions while dragging — not undoable; committed via moveNodes on drag stop.
 export const $dragPositions = atom<Record<string, {x: number; y: number}>>({});
 
+// Currently submerged group (null = root level). Purely a view concern.
+export const $activeGroupId = atom<string | null>(null);
+
 export type ContextMenuState =
   | {type: 'pane'; x: number; y: number; canvasX: number; canvasY: number}
   | {type: 'node'; x: number; y: number; nodeId: string};

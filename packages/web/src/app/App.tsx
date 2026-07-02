@@ -15,6 +15,7 @@ import {
   resetHistory,
   runCommand,
   undo,
+  ungroupNodes,
 } from '@/modules/workspace/model/commands';
 import {$currentDialogue, $currentDialogueId, $selection, clearSelection} from '@/modules/workspace/model/store';
 import {Canvas} from '@/modules/workspace/ui/Canvas';
@@ -59,17 +60,27 @@ const handleShortcut = (event: KeyboardEvent): void => {
   if (dialogue === null) return;
 
   const hasSelection = selection.nodeIds.length > 0 || selection.edgeIds.length > 0;
+  const groups = dialogue.editor.groups ?? [];
+  const groupIds = selection.nodeIds.filter(id => groups.some(group => group.id === id));
+  const nodeIds = selection.nodeIds.filter(id => !groupIds.includes(id));
 
   if ((event.key === 'Delete' || event.key === 'Backspace') && hasSelection) {
     event.preventDefault();
-    runCommand(doc => deleteEdges(deleteNodes(doc, dialogue.id, selection.nodeIds), dialogue.id, selection.edgeIds));
+    // Deleting a group stub dissolves the group; its members survive.
+    runCommand(doc => {
+      let next = deleteEdges(deleteNodes(doc, dialogue.id, nodeIds), dialogue.id, selection.edgeIds);
+
+      for (const groupId of groupIds) next = ungroupNodes(next, dialogue.id, groupId);
+
+      return next;
+    });
     clearSelection();
     return;
   }
 
-  if (mod && event.key.toLowerCase() === 'd' && selection.nodeIds.length > 0) {
+  if (mod && event.key.toLowerCase() === 'd' && nodeIds.length > 0) {
     event.preventDefault();
-    runCommand(doc => duplicateNodes(doc, dialogue.id, selection.nodeIds));
+    runCommand(doc => duplicateNodes(doc, dialogue.id, nodeIds));
   }
 };
 

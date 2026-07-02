@@ -19,7 +19,7 @@ import {
   upsertCharacter,
   upsertVariable,
 } from '@/modules/workspace/model/commands';
-import {$currentDialogueId, clearSelection} from '@/modules/workspace/model/store';
+import {$activeGroupId, $currentDialogueId, clearSelection} from '@/modules/workspace/model/store';
 import {cn} from '@/shared/lib/cn';
 import {Field, NumberInput, Select, SmallButton, TextInput} from '@/shared/ui/fields';
 
@@ -55,6 +55,7 @@ const DialoguesTab = (): ReactElement | null => {
             className='flex-1 truncate px-1 py-0.5 text-left text-xs text-neutral-200'
             onClick={() => {
               $currentDialogueId.set(dialogue.id);
+              $activeGroupId.set(null);
               clearSelection();
             }}
           >

@@ -1,7 +1,7 @@
 import {useStore} from '@nanostores/react';
 
-import {$canRedo, $canUndo, addNode, redo, runCommand, undo} from '@/modules/workspace/model/commands';
-import {$currentDialogue} from '@/modules/workspace/model/store';
+import {$canRedo, $canUndo, addNode, groupNodes, redo, runCommand, undo} from '@/modules/workspace/model/commands';
+import {$activeGroupId, $currentDialogue, $selection, clearSelection} from '@/modules/workspace/model/store';
 import {$validationOpen} from '@/modules/workspace/model/validation';
 import {cn} from '@/shared/lib/cn';
 
@@ -27,11 +27,26 @@ export const Toolbar = (): ReactElement => {
   const dialogue = useStore($currentDialogue);
   const canUndo = useStore($canUndo);
   const canRedo = useStore($canRedo);
+  const selection = useStore($selection);
+
+  // Group ids can land in the node selection — only real nodes are groupable.
+  const groupableIds = selection.nodeIds.filter(id => dialogue?.nodes.some(node => node.id === id));
 
   const handleAdd = (kind: NodeKind): void => {
     if (dialogue === null) return;
 
-    runCommand(doc => addNode(doc, dialogue.id, kind, nextFreePosition()));
+    runCommand(doc => addNode(doc, dialogue.id, kind, nextFreePosition(), $activeGroupId.get() ?? undefined));
+  };
+
+  const handleGroup = (): void => {
+    if (dialogue === null || groupableIds.length < 2) return;
+
+    const name = window.prompt('Group name', 'Group');
+
+    if (name === null || name.trim() === '') return;
+
+    runCommand(doc => groupNodes(doc, dialogue.id, groupableIds, name.trim()));
+    clearSelection();
   };
 
   return (
@@ -50,6 +65,9 @@ export const Toolbar = (): ReactElement => {
         ↪ Redo
       </button>
       <div className='mx-1 h-4 w-px bg-neutral-800' />
+      <button type='button' className={buttonClass(groupableIds.length >= 2)} onClick={handleGroup}>
+        ▣ Group
+      </button>
       <button
         type='button'
         className={buttonClass(dialogue !== null)}

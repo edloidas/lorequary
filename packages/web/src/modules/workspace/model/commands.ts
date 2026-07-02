@@ -91,6 +91,7 @@ export const addNode = (
   dialogueId: string,
   kind: NodeKind,
   position: Position,
+  groupId?: string,
 ): ProjectDocument =>
   mapDialogue(doc, dialogueId, dialogue => {
     const nodeId = nanoid(8);
@@ -108,6 +109,13 @@ export const addNode = (
       editor: {
         ...dialogue.editor,
         nodePositions: {...dialogue.editor.nodePositions, [nodeId]: position},
+        ...(groupId === undefined || dialogue.editor.groups === undefined
+          ? {}
+          : {
+              groups: dialogue.editor.groups.map(group =>
+                group.id === groupId ? {...group, nodeIds: [...group.nodeIds, nodeId]} : group,
+              ),
+            }),
       },
     };
   });
@@ -271,6 +279,57 @@ export const deleteDialogue = (doc: ProjectDocument, dialogueId: string): Projec
   ...doc,
   dialogues: doc.dialogues.filter(dialogue => dialogue.id !== dialogueId),
 });
+
+//
+// * Group commands
+//
+
+export const groupNodes = (
+  doc: ProjectDocument,
+  dialogueId: string,
+  nodeIds: string[],
+  name: string,
+): ProjectDocument => {
+  const dialogue = doc.dialogues.find(d => d.id === dialogueId);
+  const members = nodeIds.filter(id => dialogue?.nodes.some(node => node.id === id));
+
+  if (dialogue === undefined || members.length < 2) return doc;
+
+  const groupId = nanoid(8);
+  const positions = members.map(id => dialogue.editor.nodePositions[id] ?? {x: 0, y: 0});
+  const centroid = {
+    x: positions.reduce((sum, p) => sum + p.x, 0) / positions.length,
+    y: positions.reduce((sum, p) => sum + p.y, 0) / positions.length,
+  };
+
+  return mapDialogue(doc, dialogueId, current => ({
+    ...current,
+    editor: {
+      ...current.editor,
+      nodePositions: {...current.editor.nodePositions, [groupId]: centroid},
+      groups: [...(current.editor.groups ?? []), {id: groupId, name, nodeIds: members, collapsed: true}],
+    },
+  }));
+};
+
+export const ungroupNodes = (doc: ProjectDocument, dialogueId: string, groupId: string): ProjectDocument =>
+  mapDialogue(doc, dialogueId, dialogue => ({
+    ...dialogue,
+    editor: {
+      ...dialogue.editor,
+      nodePositions: omitKeys(dialogue.editor.nodePositions, [groupId]),
+      groups: (dialogue.editor.groups ?? []).filter(group => group.id !== groupId),
+    },
+  }));
+
+export const renameGroup = (doc: ProjectDocument, dialogueId: string, groupId: string, name: string): ProjectDocument =>
+  mapDialogue(doc, dialogueId, dialogue => ({
+    ...dialogue,
+    editor: {
+      ...dialogue.editor,
+      groups: (dialogue.editor.groups ?? []).map(group => (group.id === groupId ? {...group, name} : group)),
+    },
+  }));
 
 export const setEntryNode = (doc: ProjectDocument, dialogueId: string, nodeId: string): ProjectDocument =>
   mapDialogue(doc, dialogueId, dialogue => ({...dialogue, entryNodeId: nodeId}));

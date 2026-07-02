@@ -5,7 +5,7 @@ import {runCommand, updateNode} from '@/modules/workspace/model/commands';
 import {$currentDialogue} from '@/modules/workspace/model/store';
 import {cn} from '@/shared/lib/cn';
 
-import type {DialogFlowNode} from '../flow/adapter';
+import type {DialogFlowNode, GroupFlowNode} from '../flow/adapter';
 import type {NodeProps} from '@xyflow/react';
 import type {ReactElement} from 'react';
 
@@ -140,3 +140,23 @@ export const ChoiceNode = ({id, data, selected}: NodeProps<DialogFlowNode>): Rea
 );
 
 ChoiceNode.displayName = 'ChoiceNode';
+
+export const GroupNode = ({data, selected}: NodeProps<GroupFlowNode>): ReactElement => (
+  <div
+    className={cn(
+      'w-56 rounded-md border-2 border-dashed bg-neutral-800/70 p-3 shadow-md',
+      selected ? 'border-sky-500' : 'border-neutral-600',
+    )}
+    style={data.group.color === undefined ? {} : {borderColor: data.group.color}}
+  >
+    <Handle type='target' position={Position.Top} />
+    <div className='flex items-center justify-between gap-2'>
+      <span className='truncate text-xs font-semibold text-neutral-100'>▣ {data.group.name}</span>
+      <span className='shrink-0 rounded bg-neutral-700 px-1.5 text-[10px] text-neutral-300'>{data.memberCount}</span>
+    </div>
+    <p className='mt-1 text-[10px] italic text-neutral-500'>Double-click to open</p>
+    <Handle type='source' position={Position.Bottom} />
+  </div>
+);
+
+GroupNode.displayName = 'GroupNode';
