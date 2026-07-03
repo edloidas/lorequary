@@ -1,8 +1,11 @@
+import {useStore} from '@nanostores/react';
 import {Handle, Position} from '@xyflow/react';
 import {useState} from 'react';
 
+import {$project} from '@/modules/project/model/store';
 import {runCommand, updateNode} from '@/modules/workspace/model/commands';
-import {$contextMenu, $currentDialogue, $quickAdd} from '@/modules/workspace/model/store';
+import {$contextMenu, $currentDialogue, $currentDialogueId, $quickAdd} from '@/modules/workspace/model/store';
+import {$focusNodeId} from '@/modules/workspace/model/validation';
 import {useLiveDraft} from '@/shared/hooks/useLiveDraft';
 import {cn} from '@/shared/lib/cn';
 
@@ -11,10 +14,13 @@ import type {
   CharacterType,
   ChoiceNode as CoreChoiceNode,
   ChoiceOption,
+  JumpTarget,
   LineNode as CoreLineNode,
 } from '@lorequary/core';
 import type {NodeProps} from '@xyflow/react';
 import type {MouseEvent as ReactMouseEvent, ReactElement} from 'react';
+
+import {IN_HANDLE, OUT_HANDLE} from '../flow/adapter';
 
 const commitText = (nodeId: string, text: string): void => {
   const dialogue = $currentDialogue.get();
@@ -33,10 +39,12 @@ const SPEAKER_GLYPHS: Record<CharacterType, string> = {
 
 const FALLBACK_COLOR = '#64748b';
 const CHOICE_COLOR = '#8b5cf6';
+const HUB_COLOR = '#38bdf8';
+const JUMP_COLOR = '#f59e0b';
 
 // Opens the quick-add menu anchored at the clicked pin, so a plain click on an
 // open pin offers "add connected node" without dragging.
-const openQuickAdd = (event: ReactMouseEvent, nodeId: string, handleId?: string): void => {
+const openQuickAdd = (event: ReactMouseEvent, nodeId: string, handleId: string): void => {
   const flow = (event.target as HTMLElement).closest('.react-flow');
 
   if (flow === null) return;
@@ -47,9 +55,80 @@ const openQuickAdd = (event: ReactMouseEvent, nodeId: string, handleId?: string)
   $quickAdd.set({
     x: event.clientX - bounds.left,
     y: event.clientY - bounds.top,
-    source: {nodeId, ...(handleId === undefined ? {} : {handleId})},
+    source: {nodeId, handleId},
   });
 };
+
+//
+// * Pins
+//
+
+type SourcePinProps = {
+  nodeId: string;
+  handleId: string;
+  connected: boolean;
+  className?: string;
+};
+
+const SourcePin = ({nodeId, handleId, connected, className}: SourcePinProps): ReactElement => (
+  <Handle
+    id={handleId}
+    type='source'
+    position={Position.Right}
+    className={cn(className, !connected && 'handle-open')}
+    onClick={event => {
+      if (!connected) openQuickAdd(event, nodeId, handleId);
+    }}
+  >
+    {!connected && (
+      <span className='pointer-events-none absolute inset-0 flex items-center justify-center text-[9px] font-bold leading-none text-sky-300'>
+        +
+      </span>
+    )}
+  </Handle>
+);
+
+SourcePin.displayName = 'SourcePin';
+
+// Dedicated pass/fail pins for check-bearing ports.
+const OutcomePins = ({
+  nodeId,
+  base,
+  connectedHandles,
+  offsets,
+}: {
+  nodeId: string;
+  base: string;
+  connectedHandles: string[];
+  offsets: [string, string];
+}): ReactElement => (
+  <>
+    <Handle
+      id={`${base}:success`}
+      type='source'
+      position={Position.Right}
+      className='handle-success'
+      style={{top: offsets[0]}}
+      title='On success'
+      onClick={event => {
+        if (!connectedHandles.includes(`${base}:success`)) openQuickAdd(event, nodeId, `${base}:success`);
+      }}
+    />
+    <Handle
+      id={`${base}:failure`}
+      type='source'
+      position={Position.Right}
+      className='handle-failure'
+      style={{top: offsets[1]}}
+      title='On failure'
+      onClick={event => {
+        if (!connectedHandles.includes(`${base}:failure`)) openQuickAdd(event, nodeId, `${base}:failure`);
+      }}
+    />
+  </>
+);
+
+OutcomePins.displayName = 'OutcomePins';
 
 //
 // * Inline text
@@ -119,12 +198,28 @@ const NodeBadges = ({node, entry}: {node: CoreLineNode | CoreChoiceNode; entry: 
           ▶
         </span>
       )}
+      {node.kind === 'line' && node.check !== undefined && (
+        <span
+          className={cn(
+            'rounded-sm px-1 font-semibold',
+            node.check.checkType === 'red' ? 'bg-red-500/15 text-red-300' : 'bg-zinc-500/15 text-zinc-200',
+          )}
+          title={`Entry check — rolls when shown (DC ${node.check.baseDifficulty})`}
+        >
+          ⚅{node.check.baseDifficulty}
+        </span>
+      )}
       {node.passiveCheck !== undefined && (
         <span
           className='rounded-sm bg-indigo-500/15 px-1 text-indigo-300'
-          title={`Passive check — shown when skill ≥ ${node.passiveCheck.threshold}`}
+          title={
+            node.passiveCheck.mode === 'below'
+              ? `Anti-passive check — shown when skill < ${node.passiveCheck.threshold}`
+              : `Passive check — shown when skill ≥ ${node.passiveCheck.threshold}`
+          }
         >
-          psv ≥{node.passiveCheck.threshold}
+          psv {node.passiveCheck.mode === 'below' ? '<' : '≥'}
+          {node.passiveCheck.threshold}
         </span>
       )}
       {variantCount > 0 && (
@@ -162,14 +257,6 @@ const nodeShell = (selected: boolean | undefined): string =>
 
 const headerClass = 'node-drag-header flex items-center gap-1.5 rounded-t-[7px] border-b border-white/5 px-2.5 py-1.5';
 
-const PlusGlyph = (): ReactElement => (
-  <span className='pointer-events-none absolute inset-0 flex items-center justify-center text-[9px] font-bold leading-none text-sky-300'>
-    +
-  </span>
-);
-
-PlusGlyph.displayName = 'PlusGlyph';
-
 //
 // * LineNode
 //
@@ -184,7 +271,7 @@ export const LineNode = ({id, data, selected}: NodeProps<DialogFlowNode>): React
 
   return (
     <div className={nodeShell(selected)}>
-      <Handle type='target' position={Position.Left} />
+      <Handle id={IN_HANDLE} type='target' position={Position.Left} />
       <div
         className={headerClass}
         style={{background: `linear-gradient(90deg, ${color}42, ${color}14 60%, transparent)`}}
@@ -201,16 +288,11 @@ export const LineNode = ({id, data, selected}: NodeProps<DialogFlowNode>): React
       <div className='px-2.5 py-2'>
         <InlineText nodeId={id} text={node.text} placeholder='Double-click to write…' />
       </div>
-      <Handle
-        type='source'
-        position={Position.Right}
-        className={cn(!data.outgoingConnected && 'handle-open')}
-        onClick={event => {
-          if (!data.outgoingConnected) openQuickAdd(event, id);
-        }}
-      >
-        {!data.outgoingConnected && <PlusGlyph />}
-      </Handle>
+      {node.check === undefined ? (
+        <SourcePin nodeId={id} handleId={OUT_HANDLE} connected={data.connectedHandles.includes(OUT_HANDLE)} />
+      ) : (
+        <OutcomePins nodeId={id} base={OUT_HANDLE} connectedHandles={data.connectedHandles} offsets={['38%', '68%']} />
+      )}
     </div>
   );
 };
@@ -243,7 +325,7 @@ export const ChoiceNode = ({id, data, selected}: NodeProps<DialogFlowNode>): Rea
 
   return (
     <div className={nodeShell(selected)}>
-      <Handle type='target' position={Position.Left} />
+      <Handle id={IN_HANDLE} type='target' position={Position.Left} />
       <div
         className={headerClass}
         style={{background: `linear-gradient(90deg, ${CHOICE_COLOR}38, ${CHOICE_COLOR}10 60%, transparent)`}}
@@ -256,37 +338,69 @@ export const ChoiceNode = ({id, data, selected}: NodeProps<DialogFlowNode>): Rea
       <div className='flex flex-col gap-1 px-2.5 py-2'>
         <InlineText nodeId={id} text={node.text} placeholder='Double-click to describe…' />
         <div className='flex flex-col gap-1'>
-          {node.options.map(option => {
-            const connected = data.connectedOptionIds.includes(option.id);
-
-            return (
-              <div
-                key={option.id}
-                className='relative rounded border border-ink-700/70 bg-ink-900/80 px-2 py-1 pr-3 text-[10px] text-zinc-300'
-              >
-                <span className='line-clamp-1'>
-                  {checkTag(option)}
-                  {option.visibility !== 'available' && (
-                    <span className='mr-1 text-zinc-500' title={`Gated: ${option.visibility}`}>
-                      🔒
-                    </span>
-                  )}
-                  {option.text === '' ? <span className='italic text-zinc-500'>empty option</span> : option.text}
-                </span>
+          {node.options.map(option => (
+            <div
+              key={option.id}
+              className='relative rounded border border-ink-700/70 bg-ink-900/80 px-2 py-1 pr-3 text-[10px] text-zinc-300'
+            >
+              <span className='line-clamp-1'>
+                {checkTag(option)}
+                {option.visibility !== 'available' && (
+                  <span className='mr-1 text-zinc-500' title={`Gated: ${option.visibility}`}>
+                    🔒
+                  </span>
+                )}
+                {option.text === '' ? <span className='italic text-zinc-500'>empty option</span> : option.text}
+              </span>
+              {option.skillCheck === undefined ? (
                 <Handle
                   id={option.id}
                   type='source'
                   position={Position.Right}
-                  className={cn('handle-option !absolute !-right-[17px] !top-1/2', !connected && 'handle-open')}
+                  className={cn(
+                    'handle-option !absolute !-right-[17px] !top-1/2',
+                    !data.connectedHandles.includes(option.id) && 'handle-open',
+                  )}
                   onClick={event => {
-                    if (!connected) openQuickAdd(event, id, option.id);
+                    if (!data.connectedHandles.includes(option.id)) openQuickAdd(event, id, option.id);
                   }}
                 >
-                  {!connected && <PlusGlyph />}
+                  {!data.connectedHandles.includes(option.id) && (
+                    <span className='pointer-events-none absolute inset-0 flex items-center justify-center text-[9px] font-bold leading-none text-sky-300'>
+                      +
+                    </span>
+                  )}
                 </Handle>
-              </div>
-            );
-          })}
+              ) : (
+                <>
+                  <Handle
+                    id={`${option.id}:success`}
+                    type='source'
+                    position={Position.Right}
+                    className='handle-success !absolute !-right-[17px] !top-[30%]'
+                    title='On success'
+                    onClick={event => {
+                      if (!data.connectedHandles.includes(`${option.id}:success`)) {
+                        openQuickAdd(event, id, `${option.id}:success`);
+                      }
+                    }}
+                  />
+                  <Handle
+                    id={`${option.id}:failure`}
+                    type='source'
+                    position={Position.Right}
+                    className='handle-failure !absolute !-right-[17px] !top-[70%]'
+                    title='On failure'
+                    onClick={event => {
+                      if (!data.connectedHandles.includes(`${option.id}:failure`)) {
+                        openQuickAdd(event, id, `${option.id}:failure`);
+                      }
+                    }}
+                  />
+                </>
+              )}
+            </div>
+          ))}
           {node.options.length === 0 && (
             <span className='text-[10px] italic text-zinc-500'>No options — add them in the inspector</span>
           )}
@@ -297,6 +411,156 @@ export const ChoiceNode = ({id, data, selected}: NodeProps<DialogFlowNode>): Rea
 };
 
 ChoiceNode.displayName = 'ChoiceNode';
+
+//
+// * HubNode
+//
+
+export const HubNode = ({id, data, selected}: NodeProps<DialogFlowNode>): ReactElement | null => {
+  const {node} = data;
+
+  if (node.kind !== 'hub') return null;
+
+  const conditionCount = node.conditions?.length ?? 0;
+  const effectCount = node.effects?.length ?? 0;
+
+  return (
+    <div
+      className={cn(
+        'node-drag-header flex w-28 items-center gap-1.5 rounded-full border bg-ink-850 px-3 py-1.5 shadow-[0_6px_20px_rgb(0_0_0/0.45)]',
+
+        selected ? 'border-sky-400' : 'border-ink-700',
+      )}
+    >
+      <Handle id={IN_HANDLE} type='target' position={Position.Left} />
+      <span className='text-[11px]' style={{color: HUB_COLOR}}>
+        ◇
+      </span>
+      <span className='text-[10px] font-semibold uppercase tracking-wider' style={{color: HUB_COLOR}}>
+        Hub
+      </span>
+      <div className='flex-1' />
+      <div className='flex gap-1 text-[9px]'>
+        {conditionCount > 0 && <span className='rounded-sm bg-ink-700/80 px-1 text-zinc-300'>?{conditionCount}</span>}
+        {effectCount > 0 && <span className='rounded-sm bg-ink-700/80 px-1 text-zinc-300'>!{effectCount}</span>}
+      </div>
+      <SourcePin nodeId={id} handleId={OUT_HANDLE} connected={data.connectedHandles.includes(OUT_HANDLE)} />
+    </div>
+  );
+};
+
+HubNode.displayName = 'HubNode';
+
+//
+// * JumpNode
+//
+
+const NONE = '__none__';
+
+const patchJumpTarget = (nodeId: string, target: JumpTarget | undefined): void => {
+  const dialogue = $currentDialogue.get();
+
+  if (dialogue === null) return;
+
+  runCommand(doc => updateNode(doc, dialogue.id, nodeId, {jumpTarget: target}));
+};
+
+export const JumpNode = ({id, data, selected}: NodeProps<DialogFlowNode>): ReactElement | null => {
+  const project = useStore($project);
+  const dialogue = useStore($currentDialogue);
+  const {node} = data;
+
+  if (node.kind !== 'jump' || project === null || dialogue === null) return null;
+
+  const target = node.jumpTarget;
+  const targetDialogueId = target?.dialogueId ?? dialogue.id;
+  const targetDialogue = project.dialogues.find(d => d.id === targetDialogueId);
+
+  const handleNavigate = (): void => {
+    if (target === undefined || targetDialogue === undefined) return;
+
+    if (targetDialogue.id !== dialogue.id) {
+      $currentDialogueId.set(targetDialogue.id);
+    }
+
+    $focusNodeId.set(target.nodeId ?? targetDialogue.entryNodeId);
+  };
+
+  const handleDialogueChange = (next: string): void => {
+    if (next === dialogue.id) {
+      // Same-dialogue jumps need an explicit node — cleared until picked.
+      patchJumpTarget(id, undefined);
+      return;
+    }
+
+    patchJumpTarget(id, {dialogueId: next});
+  };
+
+  const handleNodeChange = (next: string): void => {
+    const sameDialogue = targetDialogueId === dialogue.id;
+
+    if (next === NONE) {
+      patchJumpTarget(id, sameDialogue ? undefined : {dialogueId: targetDialogueId});
+      return;
+    }
+
+    patchJumpTarget(id, sameDialogue ? {nodeId: next} : {dialogueId: targetDialogueId, nodeId: next});
+  };
+
+  const nodeOptions = (targetDialogue?.nodes ?? []).filter(n => n.kind !== 'jump');
+
+  return (
+    <div
+      className={cn(
+        'w-52 rounded-lg border bg-ink-850 shadow-[0_6px_20px_rgb(0_0_0/0.45)]',
+
+        selected ? 'border-sky-400' : 'border-ink-700',
+      )}
+      onDoubleClick={handleNavigate}
+      title='Double-click to go to the target'
+    >
+      <Handle id={IN_HANDLE} type='target' position={Position.Left} />
+      <div
+        className={headerClass}
+        style={{background: `linear-gradient(90deg, ${JUMP_COLOR}30, ${JUMP_COLOR}0c 60%, transparent)`}}
+      >
+        <span className='text-[11px]' style={{color: JUMP_COLOR}}>
+          ↪
+        </span>
+        <span className='text-[10px] font-semibold uppercase tracking-wider' style={{color: JUMP_COLOR}}>
+          Jump
+        </span>
+      </div>
+      <div className='nodrag flex flex-col gap-1 px-2.5 py-2'>
+        <select
+          className='w-full rounded border border-ink-700 bg-ink-900 px-1.5 py-1 text-[10px] text-zinc-200 outline-none focus:border-sky-600'
+          value={targetDialogueId}
+          onChange={event => handleDialogueChange(event.target.value)}
+        >
+          {project.dialogues.map(d => (
+            <option key={d.id} value={d.id}>
+              {d.id === dialogue.id ? `${d.name} (this dialogue)` : d.name}
+            </option>
+          ))}
+        </select>
+        <select
+          className='w-full rounded border border-ink-700 bg-ink-900 px-1.5 py-1 text-[10px] text-zinc-200 outline-none focus:border-sky-600'
+          value={target?.nodeId ?? NONE}
+          onChange={event => handleNodeChange(event.target.value)}
+        >
+          <option value={NONE}>{targetDialogueId === dialogue.id ? '— pick a node —' : '— dialogue entry —'}</option>
+          {nodeOptions.map(n => (
+            <option key={n.id} value={n.id}>
+              {'text' in n && n.text.trim() !== '' ? n.text.slice(0, 32) : n.id}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+};
+
+JumpNode.displayName = 'JumpNode';
 
 //
 // * GroupNode

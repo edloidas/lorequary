@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vite-plus/test';
 
 import type {Character, Dialogue} from '@lorequary/core';
 
-import {toFlowEdges, toFlowNodes} from './adapter';
+import {handleToPort, portToHandle, toFlowEdges, toFlowNodes} from './adapter';
 
 const CHARACTERS: Character[] = [
   {id: 'c1', name: 'aurelia', displayName: 'Aurelia', type: 'character', color: '#c04040'},
@@ -51,11 +51,33 @@ describe('toFlowNodes', () => {
   });
 });
 
+describe('handle mapping', () => {
+  it('maps ports to deterministic handle ids and back', () => {
+    expect(portToHandle({role: 'flow'})).toBe('out');
+    expect(portToHandle({role: 'success'})).toBe('out:success');
+    expect(portToHandle({sourceOption: 'o1', role: 'flow'})).toBe('o1');
+    expect(portToHandle({sourceOption: 'o1', role: 'failure'})).toBe('o1:failure');
+
+    expect(handleToPort('out')).toStrictEqual({role: 'flow'});
+    expect(handleToPort('out:failure')).toStrictEqual({role: 'failure'});
+    expect(handleToPort('o1')).toStrictEqual({role: 'flow', sourceOption: 'o1'});
+    expect(handleToPort('o1:success')).toStrictEqual({role: 'success', sourceOption: 'o1'});
+    expect(handleToPort(undefined)).toStrictEqual({role: 'flow'});
+  });
+});
+
 describe('toFlowEdges', () => {
-  it('maps edges with selection state', () => {
+  it('maps edges with handle ids and selection state', () => {
     const edges = toFlowEdges(DIALOGUE, new Set(['e1']));
 
-    expect(edges[0]).toMatchObject({id: 'e1', source: 'n1', target: 'n2', selected: true});
+    expect(edges[0]).toMatchObject({
+      id: 'e1',
+      source: 'n1',
+      target: 'n2',
+      sourceHandle: 'out',
+      targetHandle: 'in',
+      selected: true,
+    });
   });
 
   it('styles outcome edges by role with pass/fail labels', () => {
@@ -71,27 +93,28 @@ describe('toFlowEdges', () => {
     const edges = toFlowEdges(dialogue, new Set());
 
     expect(edges.find(edge => edge.id === 'e_ok')).toMatchObject({
-      sourceHandle: 'o1',
+      sourceHandle: 'o1:success',
       className: 'edge-check-success',
       label: 'pass',
     });
     expect(edges.find(edge => edge.id === 'e_fail')).toMatchObject({
+      sourceHandle: 'o1:failure',
       className: 'edge-check-failure',
       label: 'busted',
     });
-    expect(edges.find(edge => edge.id === 'e_opt')).toMatchObject({className: 'edge-option'});
+    expect(edges.find(edge => edge.id === 'e_opt')).toMatchObject({sourceHandle: 'o1', className: 'edge-option'});
   });
 });
 
 describe('source connectivity', () => {
-  it('should expose source connectivity for quick-add affordances', () => {
+  it('should expose connected source handles for quick-add affordances', () => {
     const nodes = toFlowNodes(DIALOGUE, CHARACTERS, new Set());
 
-    expect(nodes[0]?.data).toMatchObject({outgoingConnected: true});
-    expect(nodes[1]?.data).toMatchObject({outgoingConnected: false, connectedOptionIds: []});
+    expect(nodes[0]?.data).toMatchObject({connectedHandles: ['out']});
+    expect(nodes[1]?.data).toMatchObject({connectedHandles: []});
   });
 
-  it('marks a checked option connected only when both outcome edges exist', () => {
+  it('lists outcome handles independently for checked options', () => {
     const dialogue: Dialogue = {
       ...DIALOGUE,
       nodes: [
@@ -113,13 +136,6 @@ describe('source connectivity', () => {
       edges: [{id: 'e_ok', source: 'n2', sourceOption: 'o1', role: 'success', target: 'n1'}],
     };
 
-    expect(toFlowNodes(dialogue, CHARACTERS, new Set())[1]?.data).toMatchObject({connectedOptionIds: []});
-
-    const wired: Dialogue = {
-      ...dialogue,
-      edges: [...dialogue.edges, {id: 'e_fail', source: 'n2', sourceOption: 'o1', role: 'failure', target: 'n1'}],
-    };
-
-    expect(toFlowNodes(wired, CHARACTERS, new Set())[1]?.data).toMatchObject({connectedOptionIds: ['o1']});
+    expect(toFlowNodes(dialogue, CHARACTERS, new Set())[1]?.data).toMatchObject({connectedHandles: ['o1:success']});
   });
 });
