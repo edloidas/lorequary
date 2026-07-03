@@ -610,7 +610,7 @@ describe('jumps', () => {
     expect(run.activeDialogueId).toBe('dlg_two');
     expect(run.current()).toMatchObject({nodeId: 'm1', text: 'Elsewhere.'});
     expect(run.variables['hero.money']).toBe(110);
-    expect(run.seenCount('n1')).toBe(1);
+    expect(run.seenCount('m1')).toBe(1);
   });
 
   it('keeps red-check locks across a cross-dialogue round trip', () => {
@@ -670,6 +670,98 @@ describe('jumps', () => {
     }
 
     expect(view.options[0]).toMatchObject({optionId: 'o_red', state: 'locked_used'});
+  });
+
+  it('does not bleed a seenCount-gated node id between dialogues', () => {
+    // Both dialogues have a node `gate`; the destination gate gates its first-visit content
+    // on `seenCount() < 1`. Namespaced state means the origin visit must not skip it.
+    const project = buildProject({
+      variables: VARIABLES,
+      dialogues: [
+        buildDialogue({
+          entryNodeId: 'gate',
+          nodes: [
+            buildNode({id: 'gate', text: 'A first.'}),
+            buildJumpNode({id: 'j1', jumpTarget: {dialogueId: 'dlg_two'}}),
+          ],
+          edges: [buildEdge({id: 'e1', source: 'gate', target: 'j1'})],
+        }),
+        buildDialogue({
+          id: 'dlg_two',
+          name: 'Two',
+          entryNodeId: 'gate',
+          nodes: [
+            buildNode({id: 'gate', text: 'B first visit.', conditions: ['seenCount() < 1']}),
+            buildNode({id: 'fallback', text: 'B fallback.'}),
+          ],
+          edges: [buildEdge({id: 'e2', source: 'gate', target: 'fallback'})],
+        }),
+      ],
+    });
+    const run = startPlaythrough(project, 'dlg_intro');
+
+    run.advance(); // gate (dlg_intro) → jump → dlg_two gate
+
+    expect(run.activeDialogueId).toBe('dlg_two');
+    expect(run.current()).toMatchObject({nodeId: 'gate', text: 'B first visit.'});
+  });
+
+  it('does not bleed a failed red-check option id between dialogues', () => {
+    // Both dialogues expose an option `shared`; failing the red check in the origin must not
+    // lock the destination's same-id option, which was never attempted there.
+    const project = buildProject({
+      variables: VARIABLES,
+      dialogues: [
+        buildDialogue({
+          entryNodeId: 'choice',
+          nodes: [
+            buildChoiceNode({
+              id: 'choice',
+              text: 'Decide.',
+              options: [
+                buildOption({id: 'shared', text: 'Force it', skillCheck: {...RHETORIC_CHECK, checkType: 'red'}}),
+              ],
+            }),
+            buildNode({id: 'lose', text: 'Lost.'}),
+            buildJumpNode({id: 'j_away', jumpTarget: {dialogueId: 'dlg_two'}}),
+          ],
+          edges: [
+            buildEdge({id: 'e_ok', source: 'choice', sourceOption: 'shared', role: 'success', target: 'lose'}),
+            buildEdge({id: 'e_fail', source: 'choice', sourceOption: 'shared', role: 'failure', target: 'lose'}),
+            buildEdge({id: 'e_away', source: 'lose', target: 'j_away'}),
+          ],
+        }),
+        buildDialogue({
+          id: 'dlg_two',
+          name: 'Two',
+          entryNodeId: 'choice',
+          nodes: [
+            buildChoiceNode({
+              id: 'choice',
+              text: 'Decide again.',
+              options: [
+                buildOption({id: 'shared', text: 'Force it', skillCheck: {...RHETORIC_CHECK, checkType: 'red'}}),
+              ],
+            }),
+          ],
+          edges: [],
+        }),
+      ],
+    });
+    const run = startPlaythrough(project, 'dlg_intro', {rng: seq(0, 0)});
+
+    run.choose('shared'); // snake eyes → failure → lose
+    run.advance(); // lose → jump → dlg_two choice
+
+    expect(run.activeDialogueId).toBe('dlg_two');
+
+    const view = run.current();
+
+    if (view?.kind !== 'choice') {
+      expect.unreachable('expected a choice view');
+    }
+
+    expect(view.options[0]).toMatchObject({optionId: 'shared', state: 'available'});
   });
 });
 
