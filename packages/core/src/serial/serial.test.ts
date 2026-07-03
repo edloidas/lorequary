@@ -8,7 +8,7 @@ describe('serializeProject', () => {
   it('produces pretty-printed JSON', () => {
     const json = serializeProject(buildProject());
 
-    expect(json).toContain('"schemaVersion": 1');
+    expect(json).toContain('"schemaVersion": 2');
     expect(json.split('\n').length).toBeGreaterThan(1);
   });
 });
@@ -22,7 +22,8 @@ describe('deserializeProject', () => {
       expect.unreachable(`expected ok, got: ${result.error.message}`);
     }
 
-    expect(result.value).toStrictEqual(project);
+    expect(result.value.project).toStrictEqual(project);
+    expect(result.value.notes).toStrictEqual([]);
   });
 
   it('accepts a full-featured document', () => {

@@ -36,6 +36,6 @@ describe('exportRuntimeJson', () => {
     const json = exportRuntimeJson(buildProject({dialogues: [buildDialogue()]}));
 
     expect(json).not.toContain('nodePositions');
-    expect(JSON.parse(json)).toMatchObject({schemaVersion: 1});
+    expect(JSON.parse(json)).toMatchObject({schemaVersion: 2});
   });
 });

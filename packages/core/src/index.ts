@@ -36,8 +36,11 @@ export {SCHEMA_VERSION} from './schema';
 
 export {failureTextKey, lockReasonKey, modifierKey, nodeTextKey, optionKey, optionSpokenKey, variantKey} from './keys';
 
-export type {SerialError} from './serial/serial';
+export type {DeserializedProject, SerialError} from './serial/serial';
 export {deserializeProject, serializeProject} from './serial/serial';
+
+export type {MigrationResult} from './serial/migrate';
+export {migrateProjectData} from './serial/migrate';
 
 export type {RuntimeDialogue, RuntimeDocument} from './export/ir';
 export {exportRuntimeJson, toRuntimeDocument} from './export/ir';

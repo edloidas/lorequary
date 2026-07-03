@@ -299,6 +299,7 @@ export const ProjectActions = (): ReactElement | null => {
   const project = useStore($project);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [importError, setImportError] = useState<string | undefined>(undefined);
+  const [importNotice, setImportNotice] = useState<string | undefined>(undefined);
 
   if (project === null) return null;
 
@@ -309,11 +310,17 @@ export const ProjectActions = (): ReactElement | null => {
       const issues = result.error.issues?.slice(0, 3).join('; ') ?? '';
 
       setImportError(`${result.error.message}${issues === '' ? '' : ` — ${issues}`}`);
+      setImportNotice(undefined);
       return;
     }
 
     setImportError(undefined);
-    applyImportedProject(result.value);
+    setImportNotice(
+      result.value.notes.length === 0
+        ? undefined
+        : `Migrated from an older format: ${result.value.notes.slice(0, 3).join('; ')}`,
+    );
+    applyImportedProject(result.value.project);
   };
 
   return (
@@ -324,6 +331,7 @@ export const ProjectActions = (): ReactElement | null => {
         <SmallButton onClick={() => fileInputRef.current?.click()}>Import</SmallButton>
       </div>
       {importError !== undefined && <p className='text-[10px] leading-snug text-red-400'>{importError}</p>}
+      {importNotice !== undefined && <p className='text-[10px] leading-snug text-amber-400'>{importNotice}</p>}
       <input
         ref={fileInputRef}
         type='file'
