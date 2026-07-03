@@ -30,7 +30,7 @@ describe('importProjectText', () => {
       expect.unreachable(`expected ok, got ${result.error.message}`);
     }
 
-    expect(result.value.meta.name).toBe('Imported');
+    expect(result.value.project.meta.name).toBe('Imported');
   });
 
   it('fails with issues on an invalid payload', () => {

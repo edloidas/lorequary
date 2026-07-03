@@ -6,17 +6,24 @@ import type {Result} from '@lorequary/parser';
 
 import {SCHEMA_VERSION} from '../schema';
 import {zProjectDocument} from '../validate/schemas';
+import {migrateProjectData} from './migrate';
 
 export type SerialError = {
   message: string;
   issues?: string[];
 };
 
+export type DeserializedProject = {
+  project: ProjectDocument;
+  // Migration repairs (e.g. embedded targets disagreeing with edges) — empty for current-version documents.
+  notes: string[];
+};
+
 const zVersionProbe = z.object({schemaVersion: z.number()});
 
 export const serializeProject = (doc: ProjectDocument): string => JSON.stringify(doc, null, 2);
 
-export const deserializeProject = (json: string): Result<ProjectDocument, SerialError> => {
+export const deserializeProject = (json: string): Result<DeserializedProject, SerialError> => {
   let data: unknown;
 
   try {
@@ -33,7 +40,8 @@ export const deserializeProject = (json: string): Result<ProjectDocument, Serial
     });
   }
 
-  const parsed = zProjectDocument.safeParse(data);
+  const migrated = migrateProjectData(data);
+  const parsed = zProjectDocument.safeParse(migrated.data);
 
   if (!parsed.success) {
     return err({
@@ -42,5 +50,5 @@ export const deserializeProject = (json: string): Result<ProjectDocument, Serial
     });
   }
 
-  return ok(parsed.data);
+  return ok({project: parsed.data, notes: migrated.notes});
 };
