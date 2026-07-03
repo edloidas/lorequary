@@ -18,8 +18,26 @@ export const zFieldDefinition = z.object({
   defaultValue: z.union([z.string(), z.number(), z.boolean()]).optional(),
 });
 
+const zSlot = z.object({
+  id: z.string(),
+  name: z.string(),
+  options: z.array(z.string()),
+});
+
+export const zStageSlot = zSlot;
+export const zExpressionSlot = zSlot;
+
+export const zCheckRollSettings = z.object({
+  formula: z.enum(['2d6', '1d20']),
+  critFail: z.boolean().optional(),
+  critSuccess: z.boolean().optional(),
+});
+
 export const zProjectSettings = z.object({
   customCharacterFields: z.array(zFieldDefinition).optional(),
+  stageSlots: z.array(zStageSlot).optional(),
+  expressionSlots: z.array(zExpressionSlot).optional(),
+  checkRoll: zCheckRollSettings.optional(),
 });
 
 export const zExpression = z.object({
@@ -70,6 +88,7 @@ export const zTextVariant = z.object({
 export const zPassiveCheck = z.object({
   skillId: z.string(),
   threshold: z.number(),
+  mode: z.enum(['atLeast', 'below']).optional(),
 });
 
 export const zCheckModifier = z.object({
@@ -84,15 +103,13 @@ export const zSkillCheck = z.object({
   baseDifficulty: z.number(),
   checkType: z.enum(['white', 'red']),
   modifiers: z.array(zCheckModifier).optional(),
-  successTargetId: z.string(),
-  failureTargetId: z.string(),
 });
 
 export const zChoiceOption = z.object({
   id: z.string(),
   text: z.string(),
+  spokenText: z.string().optional(),
   lineKey: z.string().optional(),
-  targetNodeId: z.string(),
   conditions: z.array(z.string()).optional(),
   visibility: z.enum(['available', 'locked_visible', 'locked_hidden', 'locked_used', 'invisible']),
   lockReason: z.string().optional(),
@@ -100,30 +117,69 @@ export const zChoiceOption = z.object({
   effects: z.array(z.string()).optional(),
 });
 
-export const zDialogNode = z.object({
+export const zJumpTarget = z
+  .object({
+    dialogueId: z.string().optional(),
+    nodeId: z.string().optional(),
+  })
+  .refine(target => target.dialogueId !== undefined || target.nodeId !== undefined, {
+    message: 'Jump target must set dialogueId or nodeId',
+  });
+
+const zNodeBase = {
   id: z.string(),
-  kind: z.enum(['line', 'choice']),
+  conditions: z.array(z.string()).optional(),
+  effects: z.array(z.string()).optional(),
+  metadata: z.record(z.unknown()).optional(),
+};
+
+const zContentNode = {
+  ...zNodeBase,
   characterId: z.string().optional(),
-  expressionId: z.string().optional(),
   text: z.string(),
   textVariants: z.array(zTextVariant).optional(),
   lineKey: z.string().optional(),
   passiveCheck: zPassiveCheck.optional(),
-  conditions: z.array(z.string()).optional(),
-  effects: z.array(z.string()).optional(),
-  options: z.array(zChoiceOption).optional(),
-  metadata: z.record(z.unknown()).optional(),
+};
+
+export const zLineNode = z.object({
+  ...zContentNode,
+  kind: z.literal('line'),
+  check: zSkillCheck.optional(),
+  failureText: z.string().optional(),
+  stage: z.record(z.string()).optional(),
+  expression: z.record(z.string()).optional(),
 });
+
+export const zChoiceNode = z.object({
+  ...zContentNode,
+  kind: z.literal('choice'),
+  options: z.array(zChoiceOption),
+});
+
+export const zHubNode = z.object({
+  ...zNodeBase,
+  kind: z.literal('hub'),
+});
+
+export const zJumpNode = z.object({
+  ...zNodeBase,
+  kind: z.literal('jump'),
+  jumpTarget: zJumpTarget.optional(),
+});
+
+export const zDialogNode = z.discriminatedUnion('kind', [zLineNode, zChoiceNode, zHubNode, zJumpNode]);
 
 export const zDialogEdge = z.object({
   id: z.string(),
   source: z.string(),
+  sourceOption: z.string().optional(),
+  role: z.enum(['flow', 'success', 'failure']),
   target: z.string(),
-  sourceHandle: z.string().optional(),
-  targetHandle: z.string().optional(),
-  label: z.string().optional(),
   conditions: z.array(z.string()).optional(),
+  effects: z.array(z.string()).optional(),
   priority: z.number().optional(),
+  label: z.string().optional(),
 });
 
 export const zNodeGroup = z.object({
@@ -154,6 +210,7 @@ export const zDialogue = z.object({
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
   entryNodeId: z.string(),
+  stageDefaults: z.record(z.string()).optional(),
   nodes: z.array(zDialogNode),
   edges: z.array(zDialogEdge),
   editor: zDialogueEditorState,

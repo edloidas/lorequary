@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vite-plus/test';
 
 import type {ChoiceOption, ProjectDocument} from '../schema';
 
-import {buildDialogue, buildEdge, buildNode, buildProject, buildVariable} from '../fixtures';
+import {buildChoiceNode, buildDialogue, buildEdge, buildNode, buildProject, buildVariable} from '../fixtures';
 import {startPlaythrough} from './engine';
 
 // rng stub: cycles through the given [0,1) values.
@@ -26,7 +26,6 @@ const VARIABLES = [
 const buildOption = (overrides?: Partial<ChoiceOption>): ChoiceOption => ({
   id: 'o1',
   text: 'Continue',
-  targetNodeId: 'end',
   visibility: 'available',
   ...overrides,
 });
@@ -187,6 +186,7 @@ describe('advance', () => {
   });
 });
 
+// Options without a check flow to 'end'; checked options route success → 'win', failure → 'lose'.
 const checkProject = (options: ChoiceOption[], entryEffects?: string[]): ProjectDocument =>
   buildProject({
     variables: VARIABLES,
@@ -194,7 +194,7 @@ const checkProject = (options: ChoiceOption[], entryEffects?: string[]): Project
       buildDialogue({
         entryNodeId: 'choice',
         nodes: [
-          buildNode({id: 'choice', kind: 'choice', text: 'Decide.', options, effects: entryEffects}),
+          buildChoiceNode({id: 'choice', text: 'Decide.', options, effects: entryEffects}),
           buildNode({id: 'end', text: 'Done.'}),
           buildNode({id: 'win', text: 'Won.'}),
           buildNode({id: 'lose', text: 'Lost.'}),
@@ -202,6 +202,26 @@ const checkProject = (options: ChoiceOption[], entryEffects?: string[]): Project
         edges: [
           buildEdge({id: 'back_win', source: 'win', target: 'choice'}),
           buildEdge({id: 'back_lose', source: 'lose', target: 'choice'}),
+          ...options.flatMap(option =>
+            option.skillCheck === undefined
+              ? [buildEdge({id: `e_${option.id}`, source: 'choice', sourceOption: option.id, target: 'end'})]
+              : [
+                  buildEdge({
+                    id: `e_${option.id}_ok`,
+                    source: 'choice',
+                    sourceOption: option.id,
+                    role: 'success',
+                    target: 'win',
+                  }),
+                  buildEdge({
+                    id: `e_${option.id}_fail`,
+                    source: 'choice',
+                    sourceOption: option.id,
+                    role: 'failure',
+                    target: 'lose',
+                  }),
+                ],
+          ),
         ],
       }),
     ],
@@ -211,8 +231,6 @@ const RHETORIC_CHECK = {
   skillId: 'var_rhetoric',
   baseDifficulty: 12,
   checkType: 'white',
-  successTargetId: 'win',
-  failureTargetId: 'lose',
 } as const;
 
 describe('choice options', () => {
@@ -375,17 +393,17 @@ describe('seenCount, back, and reset', () => {
         buildDialogue({
           entryNodeId: 'choice',
           nodes: [
-            buildNode({
+            buildChoiceNode({
               id: 'choice',
-              kind: 'choice',
               text: 'Around we go.',
-              options: [buildOption({id: 'loop', text: 'Again', targetNodeId: 'mid'})],
+              options: [buildOption({id: 'loop', text: 'Again'})],
             }),
             buildNode({id: 'mid', text: 'Passing through.'}),
             buildNode({id: 'twice', text: 'Seen it before.', conditions: ['seenCount() >= 1']}),
             buildNode({id: 'fresh', text: 'First time here.'}),
           ],
           edges: [
+            buildEdge({id: 'e_loop', source: 'choice', sourceOption: 'loop', target: 'mid'}),
             buildEdge({id: 'e1', source: 'mid', target: 'twice'}),
             buildEdge({id: 'e2', source: 'twice', target: 'fresh'}),
             buildEdge({id: 'e3', source: 'fresh', target: 'choice'}),

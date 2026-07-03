@@ -16,8 +16,8 @@ const baseDialogue = (): Dialogue => ({
     {id: 'c', kind: 'line', text: 'C'},
   ],
   edges: [
-    {id: 'e_ab', source: 'a', target: 'b'},
-    {id: 'e_bc', source: 'b', target: 'c'},
+    {id: 'e_ab', source: 'a', role: 'flow', target: 'b'},
+    {id: 'e_bc', source: 'b', role: 'flow', target: 'c'},
   ],
   editor: {nodePositions: {a: {x: 0, y: 0}, b: {x: 100, y: 100}, c: {x: 200, y: 300}}},
 });
@@ -114,7 +114,7 @@ describe('adapter with groups', () => {
     const {dialogue, groupId} = groupedDialogue();
     const withExtra: Dialogue = {
       ...dialogue,
-      edges: [...dialogue.edges, {id: 'e_ac', source: 'a', target: 'c'}],
+      edges: [...dialogue.edges, {id: 'e_ac', source: 'a', role: 'flow', target: 'c'}],
     };
     const edges = toFlowEdges(withExtra, new Set(), null);
 

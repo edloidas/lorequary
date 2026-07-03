@@ -27,25 +27,40 @@ describe('deserializeProject', () => {
 
   it('accepts a full-featured document', () => {
     const project = buildProject({
+      settings: {
+        stageSlots: [{id: 'slot_place', name: 'place', options: ['harbor', 'tavern']}],
+        expressionSlots: [{id: 'slot_emotion', name: 'emotion', options: ['calm', 'angry']}],
+        checkRoll: {formula: '1d20', critFail: true, critSuccess: false},
+      },
       dialogues: [
         {
           id: 'dlg',
           name: 'Checks',
-          entryNodeId: 'n1',
+          entryNodeId: 'n0',
+          stageDefaults: {slot_place: 'harbor'},
           nodes: [
+            {
+              id: 'n0',
+              kind: 'line',
+              text: 'You made it past the gate.',
+              failureText: 'The gate stays shut.',
+              check: {skillId: 'var_perception', baseDifficulty: 10, checkType: 'red'},
+              passiveCheck: {skillId: 'var_empathy', threshold: 8, mode: 'below'},
+              stage: {slot_place: 'tavern'},
+              expression: {slot_emotion: 'calm'},
+            },
             {
               id: 'n1',
               kind: 'choice',
               text: 'What do you do?',
               conditions: ['hero.money > 0'],
               effects: ['hero.money -= 1'],
-              passiveCheck: {skillId: 'var_empathy', threshold: 8},
               textVariants: [{id: 'v1', conditions: ['hero.origin == "noble"'], text: 'M’lady?'}],
               options: [
                 {
                   id: 'o1',
                   text: '[Rhetoric] Convince her',
-                  targetNodeId: 'n1',
+                  spokenText: 'Listen — you want to let me through.',
                   visibility: 'available',
                   lockReason: 'Rhetoric too low',
                   skillCheck: {
@@ -55,14 +70,25 @@ describe('deserializeProject', () => {
                     modifiers: [
                       {id: 'm1', condition: 'quest.found_diary', bonus: 1, description: 'Found the diary (+1)'},
                     ],
-                    successTargetId: 'n1',
-                    failureTargetId: 'n1',
                   },
                 },
               ],
             },
+            {id: 'n2', kind: 'hub', conditions: ['hero.money > 0'], effects: ['hero.money -= 1']},
+            {id: 'n3', kind: 'jump', jumpTarget: {dialogueId: 'dlg_other'}},
           ],
-          edges: [{id: 'e1', source: 'n1', target: 'n1', sourceHandle: 'o1', priority: 1, conditions: ['true']}],
+          edges: [
+            {
+              id: 'e1',
+              source: 'n1',
+              sourceOption: 'o1',
+              role: 'success',
+              target: 'n1',
+              priority: 1,
+              conditions: ['true'],
+              effects: ['hero.money += 5'],
+            },
+          ],
           editor: {
             nodePositions: {n1: {x: 10, y: 20}},
             nodeSizes: {n1: {width: 200, height: 80}},
@@ -76,6 +102,25 @@ describe('deserializeProject', () => {
     const result = deserializeProject(serializeProject(project));
 
     expect(result.ok).toBe(true);
+  });
+
+  it('rejects an empty jump target', () => {
+    const project = buildProject();
+    const dialogue = project.dialogues[0];
+
+    if (dialogue === undefined) {
+      expect.unreachable('fixture has a dialogue');
+    }
+
+    dialogue.nodes.push({id: 'n_jump', kind: 'jump', jumpTarget: {}});
+
+    const result = deserializeProject(serializeProject(project));
+
+    if (result.ok) {
+      expect.unreachable('expected an error');
+    }
+
+    expect(result.error.issues?.join('\n')).toMatch(/jump target/i);
   });
 
   it('rejects malformed JSON', () => {

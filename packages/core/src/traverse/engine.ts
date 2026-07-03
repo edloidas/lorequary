@@ -1,6 +1,18 @@
 import {evaluateCondition, evaluateEffect, parseCondition, parseEffect} from '@lorequary/parser';
 
-import type {CheckModifier, ChoiceVisibility, DialogNode, Dialogue, ProjectDocument, Variable} from '../schema';
+import type {
+  CheckModifier,
+  ChoiceNode,
+  ChoiceVisibility,
+  DialogNode,
+  Dialogue,
+  EdgeRole,
+  JumpTarget,
+  LineNode,
+  ProjectDocument,
+  SkillCheck,
+  Variable,
+} from '../schema';
 import type {Context, Expr} from '@lorequary/parser';
 
 export type RuntimeValue = string | number | boolean;
@@ -64,6 +76,13 @@ type Snapshot = {
   variables: VariableState;
   seenCounts: Record<string, number>;
   failedRedChecks: string[];
+};
+
+// A routing port: edges leave a node (optionally a specific option) with a role.
+type Port = {
+  nodeId: string;
+  sourceOption?: string;
+  role: EdgeRole;
 };
 
 const MAX_COMPUTED_DEPTH = 10;
@@ -136,7 +155,9 @@ export class Playthrough {
     if (this.currentNodeId === null) return null;
 
     const node = this.nodesById.get(this.currentNodeId);
-    if (node === undefined) return null;
+
+    // Hubs and jumps pass through in moveTo and are never the resting node.
+    if (node === undefined || node.kind === 'hub' || node.kind === 'jump') return null;
 
     const base = {
       nodeId: node.id,
@@ -158,7 +179,12 @@ export class Playthrough {
     if (node === undefined || node.kind === 'choice') return;
 
     this.history.push(this.snapshot());
-    this.followEdges(this.currentNodeId);
+
+    // Entry-check resolution lands with the traversal engine rework (#16);
+    // until then a checked line continues through its success port.
+    const role: EdgeRole = node.kind === 'line' && node.check !== undefined ? 'success' : 'flow';
+
+    this.routeFrom({nodeId: node.id, role});
   }
 
   choose(optionId: string, opts: {outcome?: 'success' | 'failure'} = {}): ChooseResult {
@@ -168,7 +194,7 @@ export class Playthrough {
       throw new Error('Cannot choose: the current node is not a choice');
     }
 
-    const option = node.options?.find(o => o.id === optionId);
+    const option = node.options.find(o => o.id === optionId);
 
     if (option === undefined) {
       throw new Error(`Unknown option \`${optionId}\``);
@@ -182,7 +208,7 @@ export class Playthrough {
     this.applyEffects(option.effects, node.id);
 
     if (option.skillCheck === undefined) {
-      this.moveTo(option.targetNodeId);
+      this.routeFrom({nodeId: node.id, sourceOption: option.id, role: 'flow'});
       return {};
     }
 
@@ -192,7 +218,7 @@ export class Playthrough {
       this.failedRedChecks.add(option.id);
     }
 
-    this.moveTo(check.passed ? option.skillCheck.successTargetId : option.skillCheck.failureTargetId);
+    this.routeFrom({nodeId: node.id, sourceOption: option.id, role: check.passed ? 'success' : 'failure'});
 
     return {check};
   }
@@ -212,7 +238,8 @@ export class Playthrough {
   // * Movement
   //
 
-  // Walk to the first eligible node starting at nodeId, skipping gated nodes through their edges.
+  // Walk to the first eligible line/choice starting at nodeId. Gated nodes are skipped
+  // through their ports; hubs pass through applying effects; jumps follow their target.
   private moveTo(startNodeId: string): void {
     let nodeId: string | null = startNodeId;
 
@@ -226,19 +253,48 @@ export class Playthrough {
         return;
       }
 
-      if (this.isEligible(node)) {
+      if (node.kind === 'jump') {
+        nodeId = this.jumpDestination(node.jumpTarget);
+        continue;
+      }
+
+      const eligible = this.isEligible(node);
+
+      if (node.kind === 'hub') {
+        if (eligible) {
+          this.seenCounts[node.id] = (this.seenCounts[node.id] ?? 0) + 1;
+          this.applyEffects(node.effects, node.id);
+        }
+
+        nodeId = this.nextTarget({nodeId: node.id, role: 'flow'});
+        continue;
+      }
+
+      if (eligible) {
         this.enter(node);
         return;
       }
 
-      nodeId = this.nextTarget(node.id);
+      // A skipped checked line does not roll — it passes through its success port.
+      const role: EdgeRole = node.kind === 'line' && node.check !== undefined ? 'success' : 'flow';
+
+      nodeId = this.nextTarget({nodeId: node.id, role});
     }
 
     this.currentNodeId = null;
   }
 
-  private followEdges(nodeId: string): void {
-    const target = this.nextTarget(nodeId);
+  // Cross-dialogue jumps require the project-scoped engine rework (#16); the
+  // single-dialogue playthrough ends there for now.
+  private jumpDestination(target: JumpTarget | undefined): string | null {
+    if (target === undefined) return null;
+    if (target.dialogueId !== undefined && target.dialogueId !== this.dialogue.id) return null;
+
+    return target.nodeId ?? null;
+  }
+
+  private routeFrom(port: Port): void {
+    const target = this.nextTarget(port);
 
     if (target === null) {
       this.currentNodeId = null;
@@ -248,21 +304,30 @@ export class Playthrough {
     this.moveTo(target);
   }
 
-  private nextTarget(nodeId: string): string | null {
+  // The routing primitive: priority-sorted edges of a port, first edge whose
+  // conditions pass wins; the winning edge's effects apply on traversal.
+  private nextTarget(port: Port): string | null {
     const edges = this.dialogue.edges
-      .filter(edge => edge.source === nodeId)
+      .filter(edge => edge.source === port.nodeId && edge.sourceOption === port.sourceOption && edge.role === port.role)
       .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
 
     for (const edge of edges) {
-      if (this.evalConditions(edge.conditions, nodeId)) return edge.target;
+      if (this.evalConditions(edge.conditions, port.nodeId)) {
+        this.applyEffects(edge.effects, port.nodeId);
+        return edge.target;
+      }
     }
 
     return null;
   }
 
   private isEligible(node: DialogNode): boolean {
-    if (node.passiveCheck !== undefined && this.skillValue(node.passiveCheck.skillId) < node.passiveCheck.threshold) {
-      return false;
+    if (node.kind !== 'hub' && node.kind !== 'jump' && node.passiveCheck !== undefined) {
+      const {skillId, threshold, mode} = node.passiveCheck;
+      const value = this.skillValue(skillId);
+      const passed = mode === 'below' ? value < threshold : value >= threshold;
+
+      if (!passed) return false;
     }
 
     return this.evalConditions(node.conditions, node.id);
@@ -278,7 +343,7 @@ export class Playthrough {
   // * Views
   //
 
-  private resolveText(node: DialogNode): string {
+  private resolveText(node: LineNode | ChoiceNode): string {
     for (const variant of node.textVariants ?? []) {
       if (this.evalConditions(variant.conditions, node.id)) return variant.text;
     }
@@ -286,8 +351,8 @@ export class Playthrough {
     return node.text;
   }
 
-  private optionViews(node: DialogNode): OptionView[] {
-    return (node.options ?? []).map(option => {
+  private optionViews(node: ChoiceNode): OptionView[] {
+    return node.options.map(option => {
       const state = this.optionState(node, option.id, option.conditions, option.visibility);
 
       return {
@@ -317,11 +382,7 @@ export class Playthrough {
   // * Skill checks
   //
 
-  private resolveCheck(
-    nodeId: string,
-    skillCheck: NonNullable<DialogNode['options']>[number]['skillCheck'] & {},
-    forced?: 'success' | 'failure',
-  ): CheckResult {
+  private resolveCheck(nodeId: string, skillCheck: SkillCheck, forced?: 'success' | 'failure'): CheckResult {
     const appliedModifiers = (skillCheck.modifiers ?? []).filter(modifier => {
       if (this.evalCondition(modifier.condition, nodeId, 'modifier')) return true;
       return false;

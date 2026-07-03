@@ -2,7 +2,15 @@ import {describe, expect, it} from 'vite-plus/test';
 
 import type {GraphIssue} from './graph';
 
-import {buildDialogue, buildEdge, buildNode, buildProject, buildVariable} from '../fixtures';
+import {
+  buildChoiceNode,
+  buildDialogue,
+  buildEdge,
+  buildJumpNode,
+  buildNode,
+  buildProject,
+  buildVariable,
+} from '../fixtures';
 import {validateProject} from './graph';
 
 const codes = (issues: GraphIssue[]): string[] => issues.map(issue => issue.code);
@@ -37,80 +45,64 @@ describe('validateProject', () => {
     expect(codes(validateProject(project))).toContain('duplicate-node-id');
   });
 
-  it('reports an option pointing at a missing node and missing check targets', () => {
+  it('reports option edges pointing at a missing node', () => {
     const project = buildProject({
       dialogues: [
         buildDialogue({
           nodes: [
-            buildNode({
+            buildChoiceNode({
               id: 'node_1',
-              kind: 'choice',
-              options: [
-                {id: 'o1', text: 'Go', targetNodeId: 'ghost', visibility: 'available'},
-                {
-                  id: 'o2',
-                  text: 'Try',
-                  targetNodeId: 'node_2',
-                  visibility: 'available',
-                  skillCheck: {
-                    skillId: 'var_money',
-                    baseDifficulty: 10,
-                    checkType: 'white',
-                    successTargetId: 'ghost_win',
-                    failureTargetId: 'node_2',
-                  },
-                },
-              ],
+              options: [{id: 'o1', text: 'Go', visibility: 'available'}],
             }),
             buildNode({id: 'node_2'}),
+          ],
+          edges: [
+            buildEdge({id: 'e_opt', sourceOption: 'o1', target: 'ghost'}),
+            buildEdge({id: 'e_flow', source: 'node_2', target: 'node_1'}),
           ],
         }),
       ],
     });
-    const issues = validateProject(project).filter(i => i.code === 'orphaned-option');
+    const issues = validateProject(project).filter(i => i.code === 'broken-edge');
 
-    expect(issues).toHaveLength(2);
-    expect(issues[0]).toMatchObject({nodeId: 'node_1', optionId: 'o1'});
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({dialogueId: 'dlg_intro', edgeId: 'e_opt'});
   });
 
-  it('accepts an empty direct target on options that carry a skill check', () => {
+  it('accepts a checked option wired through success and failure edges', () => {
     const project = buildProject({
       dialogues: [
         buildDialogue({
           nodes: [
-            buildNode({
-              id: 'node_1',
-              kind: 'choice',
+            buildNode({id: 'node_1'}),
+            buildChoiceNode({
+              id: 'node_2',
               options: [
                 {
                   id: 'o1',
                   text: 'Try',
-                  targetNodeId: '',
                   visibility: 'available',
-                  skillCheck: {
-                    skillId: 'var_money',
-                    baseDifficulty: 10,
-                    checkType: 'white',
-                    successTargetId: 'node_2',
-                    failureTargetId: 'node_2',
-                  },
+                  skillCheck: {skillId: 'var_money', baseDifficulty: 10, checkType: 'white'},
                 },
               ],
             }),
-            buildNode({id: 'node_2'}),
+            buildNode({id: 'node_3'}),
+          ],
+          edges: [
+            buildEdge(),
+            buildEdge({id: 'e_ok', source: 'node_2', sourceOption: 'o1', role: 'success', target: 'node_3'}),
+            buildEdge({id: 'e_fail', source: 'node_2', sourceOption: 'o1', role: 'failure', target: 'node_3'}),
           ],
         }),
       ],
     });
 
-    const issues = validateProject(project).filter(i => i.code === 'orphaned-option');
-
-    expect(issues).toHaveLength(0);
+    expect(validateProject(project)).toStrictEqual([]);
   });
 
   it('reports a choice node with no options', () => {
     const project = buildProject({
-      dialogues: [buildDialogue({nodes: [buildNode({id: 'node_1', kind: 'choice'}), buildNode({id: 'node_2'})]})],
+      dialogues: [buildDialogue({nodes: [buildChoiceNode({id: 'node_1'}), buildNode({id: 'node_2'})]})],
     });
 
     expect(codes(validateProject(project))).toContain('empty-choice');
@@ -163,15 +155,13 @@ describe('validateProject', () => {
       dialogues: [
         buildDialogue({
           nodes: [
-            buildNode({
+            buildChoiceNode({
               id: 'node_1',
-              kind: 'choice',
               textVariants: [{id: 'v1', conditions: ['bad.var'], text: 'Variant'}],
               options: [
                 {
                   id: 'o1',
                   text: 'Go',
-                  targetNodeId: 'node_2',
                   visibility: 'available',
                   conditions: ['also.bad'],
                   effects: ['ghost.var += 1'],
@@ -179,8 +169,6 @@ describe('validateProject', () => {
                     skillId: 'var_money',
                     baseDifficulty: 10,
                     checkType: 'white',
-                    successTargetId: 'node_2',
-                    failureTargetId: 'node_2',
                     modifiers: [{id: 'm1', condition: 'nope.nope', bonus: 1, description: 'Nope'}],
                   },
                 },
@@ -188,13 +176,13 @@ describe('validateProject', () => {
             }),
             buildNode({id: 'node_2'}),
           ],
-          edges: [buildEdge({conditions: ['edge.bad']})],
+          edges: [buildEdge({conditions: ['edge.bad'], effects: ['edge.ghost += 1']})],
         }),
       ],
     });
     const issues = validateProject(project).filter(i => i.code === 'invalid-expression');
 
-    expect(issues.length).toBe(5);
+    expect(issues.length).toBe(6);
   });
 
   it('validates computed variable expressions without a boolean requirement', () => {
@@ -230,35 +218,47 @@ describe('validateProject', () => {
     expect(issue).toMatchObject({severity: 'warning', nodeId: 'island'});
   });
 
-  it('treats skill check targets as reachable', () => {
+  it('treats check outcome edges as reachability paths', () => {
     const project = buildProject({
       dialogues: [
         buildDialogue({
-          entryNodeId: 'choice',
           nodes: [
-            buildNode({
+            buildNode({id: 'node_1'}),
+            buildChoiceNode({
               id: 'choice',
-              kind: 'choice',
               options: [
                 {
                   id: 'o1',
                   text: 'Try',
-                  targetNodeId: 'win',
                   visibility: 'available',
-                  skillCheck: {
-                    skillId: 'var_money',
-                    baseDifficulty: 10,
-                    checkType: 'white',
-                    successTargetId: 'win',
-                    failureTargetId: 'lose',
-                  },
+                  skillCheck: {skillId: 'var_money', baseDifficulty: 10, checkType: 'white'},
                 },
               ],
             }),
             buildNode({id: 'win'}),
             buildNode({id: 'lose'}),
           ],
-          edges: [],
+          edges: [
+            buildEdge({target: 'choice'}),
+            buildEdge({id: 'e_ok', source: 'choice', sourceOption: 'o1', role: 'success', target: 'win'}),
+            buildEdge({id: 'e_fail', source: 'choice', sourceOption: 'o1', role: 'failure', target: 'lose'}),
+          ],
+        }),
+      ],
+    });
+
+    expect(validateProject(project)).toStrictEqual([]);
+  });
+
+  it('treats same-dialogue jump targets as reachability paths', () => {
+    const project = buildProject({
+      dialogues: [
+        buildDialogue({
+          nodes: [
+            buildNode(),
+            buildJumpNode({id: 'node_2', jumpTarget: {nodeId: 'island'}}),
+            buildNode({id: 'island'}),
+          ],
         }),
       ],
     });

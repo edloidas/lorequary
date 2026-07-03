@@ -1,4 +1,4 @@
-import type {Character, CharacterType, DialogNode, Dialogue, NodeGroup} from '@lorequary/core';
+import type {Character, CharacterType, DialogEdge, DialogNode, Dialogue, NodeGroup} from '@lorequary/core';
 import type {Edge, Node} from '@xyflow/react';
 
 export type DialogNodeData = {
@@ -25,25 +25,6 @@ export type GroupFlowNode = Node<GroupNodeData>;
 
 export type FlowNode = DialogFlowNode | GroupFlowNode;
 
-// Derived skill-check outcome edges are display-only; their ids encode the owning option.
-export const CHECK_EDGE_PREFIX = 'check:';
-
-export type CheckEdgeRef = {
-  nodeId: string;
-  optionId: string;
-  outcome: 'success' | 'failure';
-};
-
-export const parseCheckEdgeId = (edgeId: string): CheckEdgeRef | null => {
-  if (!edgeId.startsWith(CHECK_EDGE_PREFIX)) return null;
-
-  const [nodeId, optionId, outcome] = edgeId.slice(CHECK_EDGE_PREFIX.length).split('|');
-
-  if (nodeId === undefined || optionId === undefined || (outcome !== 'success' && outcome !== 'failure')) return null;
-
-  return {nodeId, optionId, outcome};
-};
-
 // Maps member node id → owning collapsed group id.
 const collapsedMembership = (dialogue: Dialogue): Map<string, string> => {
   const membership = new Map<string, string>();
@@ -57,13 +38,30 @@ const collapsedMembership = (dialogue: Dialogue): Map<string, string> => {
   return membership;
 };
 
+// An option counts as connected when its ports are fully wired: a flow edge for
+// plain options, both outcome edges for check-bearing ones.
+const connectedOptionIds = (node: DialogNode, outgoing: DialogEdge[]): string[] => {
+  if (node.kind !== 'choice') return [];
+
+  return node.options
+    .filter(option => {
+      const edges = outgoing.filter(edge => edge.sourceOption === option.id);
+
+      if (option.skillCheck === undefined) return edges.some(edge => edge.role === 'flow');
+
+      return edges.some(edge => edge.role === 'success') && edges.some(edge => edge.role === 'failure');
+    })
+    .map(option => option.id);
+};
+
 const toDialogNode = (
   dialogue: Dialogue,
   node: DialogNode,
   charactersById: Map<string, Character>,
   selectedIds: Set<string>,
 ): DialogFlowNode => {
-  const speaker = node.characterId === undefined ? undefined : charactersById.get(node.characterId);
+  const characterId = node.kind === 'line' || node.kind === 'choice' ? node.characterId : undefined;
+  const speaker = characterId === undefined ? undefined : charactersById.get(characterId);
   const outgoing = dialogue.edges.filter(edge => edge.source === node.id);
 
   return {
@@ -77,8 +75,8 @@ const toDialogNode = (
       speakerColor: speaker?.color,
       speakerType: speaker?.type,
       entry: dialogue.entryNodeId === node.id,
-      outgoingConnected: outgoing.some(edge => edge.sourceHandle === undefined),
-      connectedOptionIds: outgoing.map(edge => edge.sourceHandle).filter(handle => handle !== undefined),
+      outgoingConnected: outgoing.some(edge => edge.sourceOption === undefined),
+      connectedOptionIds: connectedOptionIds(node, outgoing),
     },
   };
 };
@@ -120,51 +118,37 @@ export const toFlowNodes = (
   return visible;
 };
 
-const edgeClassName = (dialogue: Dialogue, sourceId: string, sourceHandle: string | undefined): string | undefined => {
-  if (sourceHandle === undefined) return undefined;
+// Role-driven presentation: flow edges from options reuse the option styling,
+// outcome edges keep the check success/failure styles and pass/fail labels.
+const edgePresentation = (edge: DialogEdge): {className?: string; label?: string} => {
+  if (edge.role === 'success') return {className: 'edge-check-success', label: edge.label ?? 'pass'};
+  if (edge.role === 'failure') return {className: 'edge-check-failure', label: edge.label ?? 'fail'};
 
-  const source = dialogue.nodes.find(node => node.id === sourceId);
-
-  return source?.options?.some(option => option.id === sourceHandle) === true ? 'edge-option' : undefined;
+  return {
+    ...(edge.sourceOption === undefined ? {} : {className: 'edge-option'}),
+    ...(edge.label === undefined ? {} : {label: edge.label}),
+  };
 };
 
-// Skill-check outcome links live on options, not in dialogue.edges — surface them
-// as display-only edges so branching is visible on the canvas.
-const toCheckEdges = (dialogue: Dialogue, visibleIds: (id: string) => boolean): Edge[] => {
-  const nodeIds = new Set(dialogue.nodes.map(node => node.id));
-  const edges: Edge[] = [];
+type EdgeRoute = {
+  source: string;
+  target: string;
+  keepHandle: boolean;
+};
 
-  for (const node of dialogue.nodes) {
-    if (!visibleIds(node.id)) continue;
+const toFlowEdge = (edge: DialogEdge, selectedIds: Set<string>, route?: EdgeRoute): Edge => {
+  const {className, label} = edgePresentation(edge);
+  const keepHandle = route?.keepHandle ?? true;
 
-    for (const option of node.options ?? []) {
-      const check = option.skillCheck;
-
-      if (check === undefined) continue;
-
-      const outcomes = [
-        {outcome: 'success' as const, target: check.successTargetId, className: 'edge-check-success', label: 'pass'},
-        {outcome: 'failure' as const, target: check.failureTargetId, className: 'edge-check-failure', label: 'fail'},
-      ];
-
-      for (const {outcome, target, className, label} of outcomes) {
-        if (target === '' || !nodeIds.has(target) || !visibleIds(target)) continue;
-
-        edges.push({
-          id: `${CHECK_EDGE_PREFIX}${node.id}|${option.id}|${outcome}`,
-          source: node.id,
-          target,
-          sourceHandle: option.id,
-          label,
-          className,
-          selectable: false,
-          reconnectable: false,
-        });
-      }
-    }
-  }
-
-  return edges;
+  return {
+    id: edge.id,
+    source: route?.source ?? edge.source,
+    target: route?.target ?? edge.target,
+    ...(keepHandle && edge.sourceOption !== undefined ? {sourceHandle: edge.sourceOption} : {}),
+    ...(label === undefined ? {} : {label}),
+    ...(className === undefined ? {} : {className}),
+    selected: selectedIds.has(edge.id),
+  };
 };
 
 export const toFlowEdges = (
@@ -176,22 +160,9 @@ export const toFlowEdges = (
     const group = dialogue.editor.groups?.find(g => g.id === activeGroupId);
     const members = new Set(group?.nodeIds ?? []);
 
-    return [
-      ...dialogue.edges
-        .filter(edge => members.has(edge.source) && members.has(edge.target))
-        .map(edge => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          ...(edge.sourceHandle === undefined ? {} : {sourceHandle: edge.sourceHandle}),
-          ...(edge.label === undefined ? {} : {label: edge.label}),
-          ...(edgeClassName(dialogue, edge.source, edge.sourceHandle) === undefined
-            ? {}
-            : {className: edgeClassName(dialogue, edge.source, edge.sourceHandle)}),
-          selected: selectedIds.has(edge.id),
-        })),
-      ...toCheckEdges(dialogue, id => members.has(id)),
-    ];
+    return dialogue.edges
+      .filter(edge => members.has(edge.source) && members.has(edge.target))
+      .map(edge => toFlowEdge(edge, selectedIds));
   }
 
   const membership = collapsedMembership(dialogue);
@@ -201,30 +172,24 @@ export const toFlowEdges = (
   for (const edge of dialogue.edges) {
     const source = membership.get(edge.source) ?? edge.source;
     const target = membership.get(edge.target) ?? edge.target;
+    const remapped = source !== edge.source || target !== edge.target;
 
     if (source === target && membership.has(edge.source)) continue;
     if (source === target) continue;
 
-    const key = `${source}|${target}`;
+    // Boundary edges of a collapsed group dedupe into one; regular parallel
+    // edges (e.g. success/failure to the same node) all render.
+    if (remapped) {
+      const key = `${source}|${target}`;
 
-    if (seen.has(key)) continue;
+      if (seen.has(key)) continue;
 
-    seen.add(key);
+      seen.add(key);
+    }
 
     // A handle only exists while its owning choice node is visible.
-    const keepHandle = edge.sourceHandle !== undefined && source === edge.source;
-    const className = keepHandle ? edgeClassName(dialogue, edge.source, edge.sourceHandle) : undefined;
-
-    edges.push({
-      id: edge.id,
-      source,
-      target,
-      ...(keepHandle && edge.sourceHandle !== undefined ? {sourceHandle: edge.sourceHandle} : {}),
-      ...(edge.label === undefined ? {} : {label: edge.label}),
-      ...(className === undefined ? {} : {className}),
-      selected: selectedIds.has(edge.id),
-    });
+    edges.push(toFlowEdge(edge, selectedIds, {source, target, keepHandle: source === edge.source}));
   }
 
-  return [...edges, ...toCheckEdges(dialogue, id => !membership.has(id))];
+  return edges;
 };
