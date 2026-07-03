@@ -1,4 +1,4 @@
-import {migrateProjectData, zProjectDocument} from '@lorequary/core';
+import {SCHEMA_VERSION, migrateProjectData, zProjectDocument} from '@lorequary/core';
 import {openDB} from 'idb';
 
 import type {ProjectDocument} from '@lorequary/core';
@@ -35,8 +35,19 @@ export const saveProject = async (doc: ProjectDocument): Promise<void> => {
   localStorage.setItem(LAST_PROJECT_KEY, doc.meta.id);
 };
 
-// Stored documents may predate the current schema — migrate before parsing.
-const parseStored = (stored: unknown): ProjectDocument | null => {
+// Stored documents may predate the current schema — migrate before parsing. A document from a
+// newer build is rejected rather than loaded lossily, since zod would strip fields we do not know.
+export const parseStored = (stored: unknown): ProjectDocument | null => {
+  if (
+    typeof stored === 'object' &&
+    stored !== null &&
+    'schemaVersion' in stored &&
+    typeof stored.schemaVersion === 'number' &&
+    stored.schemaVersion > SCHEMA_VERSION
+  ) {
+    return null;
+  }
+
   const migrated = migrateProjectData(stored);
   const parsed = zProjectDocument.safeParse(migrated.data);
 

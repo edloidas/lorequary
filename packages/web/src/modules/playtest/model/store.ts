@@ -44,21 +44,29 @@ export const $playtest = atom<PlaytestUiState>(IDLE);
 let run: Playthrough | null = null;
 let steps = 0;
 
+// The run's active dialogue as of the last synced step — tracked here rather than read from
+// the user-mutable $currentDialogueId so switching dialogues in the sidebar can't fake a jump.
+let runDialogueId: string | null = null;
+
 // Transcript of everything already played, Disco Elysium roll style. Each step
 // records how many entries it appended so `back` can trim precisely.
 let log: PlaytestLogEntry[] = [];
 let stepSizes: number[] = [];
 
-// The workbench follows the playthrough across cross-dialogue jumps.
+// The workbench follows the playthrough, keeping the canvas on the run's active dialogue.
 const reconcileDialogue = (): void => {
-  if (run !== null && $currentDialogueId.get() !== run.activeDialogueId) {
+  if (run === null) return;
+
+  runDialogueId = run.activeDialogueId;
+
+  if ($currentDialogueId.get() !== run.activeDialogueId) {
     $currentDialogueId.set(run.activeDialogueId);
   }
 };
 
 // Returns the number of transcript entries pushed for a dialogue transition.
 const followDialogue = (): number => {
-  if (run === null || $currentDialogueId.get() === run.activeDialogueId) return 0;
+  if (run === null || runDialogueId === run.activeDialogueId) return 0;
 
   const activeId = run.activeDialogueId;
   const name = $project.get()?.dialogues.find(d => d.id === activeId)?.name ?? activeId;
@@ -113,6 +121,7 @@ export const startPlaytest = (options: {rng?: () => number} = {}): void => {
 
 export const stopPlaytest = (): void => {
   run = null;
+  runDialogueId = null;
   steps = 0;
   log = [];
   stepSizes = [];

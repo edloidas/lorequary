@@ -124,6 +124,30 @@ describe('deserializeProject', () => {
     expect(result.error.issues?.join('\n')).toMatch(/jump target/i);
   });
 
+  it('rejects an option id that collides with the handle encoding', () => {
+    const project = buildProject();
+    const dialogue = project.dialogues[0];
+
+    if (dialogue === undefined) {
+      expect.unreachable('fixture has a dialogue');
+    }
+
+    dialogue.nodes.push({
+      id: 'n_choice',
+      kind: 'choice',
+      text: 'Pick.',
+      options: [{id: 'a:b', text: 'Colon', visibility: 'available'}],
+    });
+
+    const result = deserializeProject(serializeProject(project));
+
+    if (result.ok) {
+      expect.unreachable('expected an error');
+    }
+
+    expect(result.error.issues?.join('\n')).toMatch(/option id/i);
+  });
+
   it('rejects malformed JSON', () => {
     const result = deserializeProject('{not json');
 
