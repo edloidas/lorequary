@@ -187,7 +187,15 @@ checkRoll?: {
 };
 ```
 
-DE uses 2d6 with both crits; Order of Lust uses d20. The engine reads this instead of hard-coding 2d6.
+DE uses 2d6 with both crits; Order of Lust uses d20. The engine reads this instead of hard-coding 2d6. The demo project stays on 2d6; a d20 game overrides it in project settings:
+
+```json
+{
+  "settings": {
+    "checkRoll": {"formula": "1d20", "critFail": true, "critSuccess": true}
+  }
+}
+```
 
 ## Connection Rules
 
