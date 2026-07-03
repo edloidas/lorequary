@@ -29,17 +29,19 @@ const TABS: {id: Tab; label: string}[] = [
 
 const countWords = (dialogue: Dialogue): number =>
   dialogue.nodes.reduce((sum, node) => {
-    const optionWords = (node.options ?? []).reduce(
-      (inner, option) => inner + option.text.split(/\s+/).filter(Boolean).length,
-      0,
-    );
+    if (node.kind === 'hub' || node.kind === 'jump') return sum;
+
+    const optionWords =
+      node.kind === 'choice'
+        ? node.options.reduce((inner, option) => inner + option.text.split(/\s+/).filter(Boolean).length, 0)
+        : 0;
 
     return sum + node.text.split(/\s+/).filter(Boolean).length + optionWords;
   }, 0);
 
 const entryPreview = (dialogue: Dialogue): string => {
   const entry = dialogue.nodes.find(node => node.id === dialogue.entryNodeId);
-  const text = entry?.text.trim() ?? '';
+  const text = entry?.kind === 'line' || entry?.kind === 'choice' ? entry.text.trim() : '';
 
   return text === '' ? 'No opening line yet.' : text;
 };

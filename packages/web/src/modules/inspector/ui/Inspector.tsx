@@ -17,8 +17,10 @@ import {$currentDialogue, $selection, clearSelection} from '@/modules/workspace/
 import {ExpressionInput} from '@/shared/ui/ExpressionInput';
 import {Field, NumberInput, Select, SmallButton, TextArea, TextInput} from '@/shared/ui/fields';
 
+import type {DialogNodePatch} from '@/modules/workspace/model/commands';
 import type {
   CheckModifier,
+  ChoiceNode,
   ChoiceOption,
   DialogNode,
   Dialogue,
@@ -32,12 +34,15 @@ import type {ReactElement} from 'react';
 const NONE = '__none__';
 
 const nodeLabel = (node: DialogNode): string => {
+  if (node.kind === 'hub') return `◇ ${node.id}`;
+  if (node.kind === 'jump') return `↪ ${node.id}`;
+
   const text = node.text.trim();
 
   return `${node.kind === 'choice' ? '◆' : '▸'} ${text === '' ? node.id : text.slice(0, 32)}`;
 };
 
-type PatchNode = (patch: Partial<DialogNode>) => void;
+type PatchNode = (patch: DialogNodePatch) => void;
 
 //
 // * Expression lists
@@ -135,20 +140,14 @@ VariantsEditor.displayName = 'VariantsEditor';
 
 const SkillCheckEditor = ({
   check,
-  nodes,
   schema,
   onChange,
 }: {
   check: SkillCheck;
-  nodes: DialogNode[];
   schema: VariableSchema;
   onChange: (next: SkillCheck | undefined) => void;
 }): ReactElement => {
   const numericVariables = useStore($numericVariables);
-  const nodeOptions = [
-    {value: NONE, label: '— none —'},
-    ...nodes.map(node => ({value: node.id, label: nodeLabel(node)})),
-  ];
 
   const patchModifier = (modifierId: string, patch: Partial<CheckModifier>): void => {
     onChange({
@@ -184,22 +183,9 @@ const SkillCheckEditor = ({
           />
         </Field>
       </div>
-      <div className='grid grid-cols-2 gap-2'>
-        <Field label='On success'>
-          <Select
-            value={check.successTargetId === '' ? NONE : check.successTargetId}
-            options={nodeOptions}
-            onChange={next => onChange({...check, successTargetId: next === NONE ? '' : next})}
-          />
-        </Field>
-        <Field label='On failure'>
-          <Select
-            value={check.failureTargetId === '' ? NONE : check.failureTargetId}
-            options={nodeOptions}
-            onChange={next => onChange({...check, failureTargetId: next === NONE ? '' : next})}
-          />
-        </Field>
-      </div>
+      <p className='text-[11px] leading-relaxed text-zinc-500'>
+        Success and failure targets are edges — drag from the option pin on the canvas.
+      </p>
       <Field label='Modifiers'>
         <div className='flex flex-col gap-2'>
           {(check.modifiers ?? []).map(modifier => (
@@ -260,42 +246,66 @@ const OptionEditor = ({
   patchNode,
 }: {
   dialogue: Dialogue;
-  node: DialogNode;
+  node: ChoiceNode;
   option: ChoiceOption;
   schema: VariableSchema;
   patchNode: PatchNode;
 }): ReactElement => {
   const patchOption = (patch: Partial<ChoiceOption>): void => {
-    patchNode({options: node.options?.map(o => (o.id === option.id ? {...o, ...patch} : o))});
+    patchNode({options: node.options.map(o => (o.id === option.id ? {...o, ...patch} : o))});
   };
+
+  const optionEdgeIds = (doc: ProjectDocument, roles?: string[]): string[] =>
+    (doc.dialogues.find(d => d.id === dialogue.id)?.edges ?? [])
+      .filter(
+        edge =>
+          edge.source === node.id &&
+          edge.sourceOption === option.id &&
+          (roles === undefined || roles.includes(edge.role)),
+      )
+      .map(edge => edge.id);
+
+  const flowTarget = dialogue.edges.find(
+    edge => edge.source === node.id && edge.sourceOption === option.id && edge.role === 'flow',
+  )?.target;
 
   const handleTargetChange = (targetId: string): void => {
     runCommand(doc => {
       if (targetId === NONE) {
-        const edgeIds = (doc.dialogues.find(d => d.id === dialogue.id)?.edges ?? [])
-          .filter(edge => edge.source === node.id && edge.sourceHandle === option.id)
-          .map(edge => edge.id);
-
-        return deleteEdges(doc, dialogue.id, edgeIds);
+        return deleteEdges(doc, dialogue.id, optionEdgeIds(doc, ['flow']));
       }
 
-      // addEdge syncs option.targetNodeId and replaces the previous option edge.
+      // addEdge replaces the option's previous flow edge.
       return addEdge(doc, dialogue.id, {source: node.id, target: targetId, sourceHandle: option.id});
     });
   };
 
   const handleRemove = (): void => {
-    runCommand(doc => {
-      const edgeIds = (doc.dialogues.find(d => d.id === dialogue.id)?.edges ?? [])
-        .filter(edge => edge.source === node.id && edge.sourceHandle === option.id)
-        .map(edge => edge.id);
-
-      return deleteEdges(
-        updateNode(doc, dialogue.id, node.id, {options: node.options?.filter(o => o.id !== option.id)}),
+    runCommand(doc =>
+      deleteEdges(
+        updateNode(doc, dialogue.id, node.id, {options: node.options.filter(o => o.id !== option.id)}),
         dialogue.id,
-        edgeIds,
-      );
-    });
+        optionEdgeIds(doc),
+      ),
+    );
+  };
+
+  // Removing a check also removes its outcome edges — they have no port without it.
+  const handleCheckChange = (next: SkillCheck | undefined): void => {
+    if (next !== undefined) {
+      patchOption({skillCheck: next});
+      return;
+    }
+
+    runCommand(doc =>
+      deleteEdges(
+        updateNode(doc, dialogue.id, node.id, {
+          options: node.options.map(o => (o.id === option.id ? {...o, skillCheck: undefined} : o)),
+        }),
+        dialogue.id,
+        optionEdgeIds(doc, ['success', 'failure']),
+      ),
+    );
   };
 
   return (
@@ -304,7 +314,7 @@ const OptionEditor = ({
       <div className='grid grid-cols-2 gap-2'>
         <Field label='Target'>
           <Select
-            value={option.targetNodeId === '' ? NONE : option.targetNodeId}
+            value={flowTarget ?? NONE}
             options={[
               {value: NONE, label: '— none —'},
               ...dialogue.nodes.filter(n => n.id !== node.id).map(n => ({value: n.id, label: nodeLabel(n)})),
@@ -349,28 +359,11 @@ const OptionEditor = ({
         onChange={next => patchOption({effects: next.length === 0 ? undefined : next})}
       />
       {option.skillCheck === undefined ? (
-        <SmallButton
-          onClick={() =>
-            patchOption({
-              skillCheck: {
-                skillId: '',
-                baseDifficulty: 10,
-                checkType: 'white',
-                successTargetId: '',
-                failureTargetId: '',
-              },
-            })
-          }
-        >
+        <SmallButton onClick={() => patchOption({skillCheck: {skillId: '', baseDifficulty: 10, checkType: 'white'}})}>
           + Add skill check
         </SmallButton>
       ) : (
-        <SkillCheckEditor
-          check={option.skillCheck}
-          nodes={dialogue.nodes.filter(n => n.id !== node.id)}
-          schema={schema}
-          onChange={next => patchOption({skillCheck: next})}
-        />
+        <SkillCheckEditor check={option.skillCheck} schema={schema} onChange={handleCheckChange} />
       )}
       <SmallButton danger onClick={handleRemove}>
         Remove option
@@ -401,16 +394,47 @@ const NodeInspector = ({
     runCommand(doc => updateNode(doc, dialogue.id, node.id, patch));
   };
 
-  const speaker = project.characters.find(character => character.id === node.characterId);
+  const footer = (
+    <div className='flex gap-2 border-t border-ink-800 pt-3'>
+      {dialogue.entryNodeId !== node.id && (
+        <SmallButton onClick={() => runCommand(doc => setEntryNode(doc, dialogue.id, node.id))}>
+          Set as entry
+        </SmallButton>
+      )}
+      <SmallButton
+        danger
+        onClick={() => {
+          runCommand(doc => deleteNodes(doc, dialogue.id, [node.id]));
+          clearSelection();
+        }}
+      >
+        Delete node
+      </SmallButton>
+    </div>
+  );
+
+  // Dedicated hub/jump editors arrive with the inspector rework (#18).
+  if (node.kind === 'hub' || node.kind === 'jump') {
+    return (
+      <div className='flex flex-col gap-3'>
+        <div className='flex items-center justify-between'>
+          <span className='text-xs font-semibold uppercase tracking-wide text-zinc-400'>
+            {node.kind === 'hub' ? 'Hub node' : 'Jump node'}
+          </span>
+          <span className='font-mono text-[10px] text-zinc-600'>{node.id}</span>
+        </div>
+        {footer}
+      </div>
+    );
+  }
 
   const handleAddOption = (): void => {
+    if (node.kind !== 'choice') return;
+
     const id = nanoid(8);
 
     patchNode({
-      options: [
-        ...(node.options ?? []),
-        {id, text: '', targetNodeId: '', visibility: 'available', lineKey: optionKey(dialogue.id, node.id, id)},
-      ],
+      options: [...node.options, {id, text: '', visibility: 'available', lineKey: optionKey(dialogue.id, node.id, id)}],
     });
   };
 
@@ -430,22 +454,9 @@ const NodeInspector = ({
             {value: NONE, label: '— none —'},
             ...project.characters.map(character => ({value: character.id, label: character.displayName})),
           ]}
-          onChange={next => patchNode({characterId: next === NONE ? undefined : next, expressionId: undefined})}
+          onChange={next => patchNode({characterId: next === NONE ? undefined : next})}
         />
       </Field>
-
-      {speaker?.expressions !== undefined && speaker.expressions.length > 0 && (
-        <Field label='Expression'>
-          <Select
-            value={node.expressionId ?? NONE}
-            options={[
-              {value: NONE, label: '— default —'},
-              ...speaker.expressions.map(expression => ({value: expression.id, label: expression.name})),
-            ]}
-            onChange={next => patchNode({expressionId: next === NONE ? undefined : next})}
-          />
-        </Field>
-      )}
 
       <Field label='Text'>
         <TextArea value={node.text} rows={4} placeholder='Node text…' onCommit={next => patchNode({text: next})} />
@@ -512,7 +523,7 @@ const NodeInspector = ({
       {node.kind === 'choice' && (
         <Field label='Options'>
           <div className='flex flex-col gap-2'>
-            {(node.options ?? []).map(option => (
+            {node.options.map(option => (
               <OptionEditor
                 key={option.id}
                 dialogue={dialogue}
@@ -527,22 +538,7 @@ const NodeInspector = ({
         </Field>
       )}
 
-      <div className='flex gap-2 border-t border-ink-800 pt-3'>
-        {dialogue.entryNodeId !== node.id && (
-          <SmallButton onClick={() => runCommand(doc => setEntryNode(doc, dialogue.id, node.id))}>
-            Set as entry
-          </SmallButton>
-        )}
-        <SmallButton
-          danger
-          onClick={() => {
-            runCommand(doc => deleteNodes(doc, dialogue.id, [node.id]));
-            clearSelection();
-          }}
-        >
-          Delete node
-        </SmallButton>
-      </div>
+      {footer}
     </div>
   );
 };

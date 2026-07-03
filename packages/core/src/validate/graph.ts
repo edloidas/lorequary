@@ -1,13 +1,12 @@
 import {parseCondition, parseEffect, validate} from '@lorequary/parser';
 
-import type {DialogNode, Dialogue, ProjectDocument} from '../schema';
+import type {DialogNode, Dialogue, ProjectDocument, SkillCheck} from '../schema';
 import type {VariableSchema} from '@lorequary/parser';
 
 export type GraphIssueCode =
   | 'missing-entry'
   | 'broken-edge'
   | 'duplicate-node-id'
-  | 'orphaned-option'
   | 'empty-choice'
   | 'missing-character'
   | 'unknown-skill'
@@ -97,17 +96,26 @@ class ProjectValidator {
       for (const condition of edge.conditions ?? []) {
         this.checkExpression(condition, 'condition', {...at, edgeId: edge.id});
       }
+
+      for (const effect of edge.effects ?? []) {
+        this.checkExpression(effect, 'effect', {...at, edgeId: edge.id});
+      }
     }
 
     for (const node of dialogue.nodes) {
-      this.validateNode(node, nodeIds, at);
+      this.validateNode(node, at);
     }
 
     this.reportUnreachable(dialogue, nodeIds);
   }
 
-  private validateNode(node: DialogNode, nodeIds: Set<string>, at: Location): void {
+  private validateNode(node: DialogNode, at: Location): void {
     const here = {...at, nodeId: node.id};
+
+    for (const condition of node.conditions ?? []) this.checkExpression(condition, 'condition', here);
+    for (const effect of node.effects ?? []) this.checkExpression(effect, 'effect', here);
+
+    if (node.kind === 'hub' || node.kind === 'jump') return;
 
     if (node.characterId !== undefined && !this.characterIds.has(node.characterId)) {
       this.report('error', 'missing-character', `Node references unknown character \`${node.characterId}\``, here);
@@ -126,16 +134,16 @@ class ProjectValidator {
       this.report('warning', 'empty-text', 'Node has no text content', here);
     }
 
-    for (const condition of node.conditions ?? []) this.checkExpression(condition, 'condition', here);
-    for (const effect of node.effects ?? []) this.checkExpression(effect, 'effect', here);
-
     for (const variant of node.textVariants ?? []) {
       for (const condition of variant.conditions) this.checkExpression(condition, 'condition', here);
     }
 
-    if (node.kind !== 'choice') return;
+    if (node.kind === 'line') {
+      if (node.check !== undefined) this.validateCheck(node.check, here);
+      return;
+    }
 
-    if (node.options === undefined || node.options.length === 0) {
+    if (node.options.length === 0) {
       this.report('error', 'empty-choice', 'Choice node has no options', here);
       return;
     }
@@ -143,36 +151,25 @@ class ProjectValidator {
     for (const option of node.options) {
       const location = {...here, optionId: option.id};
 
-      // Options with a skill check route through success/failure targets instead.
-      if (option.skillCheck === undefined && !nodeIds.has(option.targetNodeId)) {
-        this.report('error', 'orphaned-option', `Option targets missing node \`${option.targetNodeId}\``, location);
-      }
-
       for (const condition of option.conditions ?? []) this.checkExpression(condition, 'condition', location);
       for (const effect of option.effects ?? []) this.checkExpression(effect, 'effect', location);
 
-      const check = option.skillCheck;
+      if (option.skillCheck !== undefined) this.validateCheck(option.skillCheck, location);
+    }
+  }
 
-      if (check === undefined) continue;
+  private validateCheck(check: SkillCheck, location: Location): void {
+    if (!this.variableIds.has(check.skillId)) {
+      this.report(
+        'error',
+        'unknown-skill',
+        `Skill check references unknown skill variable \`${check.skillId}\``,
+        location,
+      );
+    }
 
-      if (!this.variableIds.has(check.skillId)) {
-        this.report(
-          'error',
-          'unknown-skill',
-          `Skill check references unknown skill variable \`${check.skillId}\``,
-          location,
-        );
-      }
-
-      for (const targetId of [check.successTargetId, check.failureTargetId]) {
-        if (!nodeIds.has(targetId)) {
-          this.report('error', 'orphaned-option', `Skill check targets missing node \`${targetId}\``, location);
-        }
-      }
-
-      for (const modifier of check.modifiers ?? []) {
-        this.checkExpression(modifier.condition, 'condition', location);
-      }
+    for (const modifier of check.modifiers ?? []) {
+      this.checkExpression(modifier.condition, 'condition', location);
     }
   }
 
@@ -194,11 +191,14 @@ class ProjectValidator {
         if (edge.source === nodeId) queue.push(edge.target);
       }
 
-      for (const option of nodesById.get(nodeId)?.options ?? []) {
-        queue.push(option.targetNodeId);
+      // Same-dialogue jump targets extend reachability; cross-dialogue targets are sinks here.
+      const node = nodesById.get(nodeId);
 
-        if (option.skillCheck !== undefined) {
-          queue.push(option.skillCheck.successTargetId, option.skillCheck.failureTargetId);
+      if (node?.kind === 'jump' && node.jumpTarget !== undefined) {
+        const {dialogueId, nodeId: targetNodeId} = node.jumpTarget;
+
+        if ((dialogueId === undefined || dialogueId === dialogue.id) && targetNodeId !== undefined) {
+          queue.push(targetNodeId);
         }
       }
     }

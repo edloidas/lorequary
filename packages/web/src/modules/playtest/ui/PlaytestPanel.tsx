@@ -178,6 +178,7 @@ const ChoiceStage = ({view}: {view: ChoiceView}): ReactElement => {
   const dialogue = useStore($currentDialogue);
   const playtest = useStore($playtest);
   const node = dialogue?.nodes.find(n => n.id === view.nodeId);
+  const options = node?.kind === 'choice' ? node.options : [];
 
   return (
     <div className='flex flex-col gap-1.5'>
@@ -185,7 +186,7 @@ const ChoiceStage = ({view}: {view: ChoiceView}): ReactElement => {
         <OptionRow
           key={optionView.optionId}
           view={optionView}
-          option={node?.options?.find(o => o.id === optionView.optionId)}
+          option={options.find(o => o.id === optionView.optionId)}
           manual={playtest.mode === 'manual'}
         />
       ))}

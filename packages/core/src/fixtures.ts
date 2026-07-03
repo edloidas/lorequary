@@ -1,4 +1,14 @@
-import type {Character, DialogEdge, DialogNode, Dialogue, ProjectDocument, Variable} from './schema';
+import type {
+  Character,
+  ChoiceNode,
+  DialogEdge,
+  Dialogue,
+  HubNode,
+  JumpNode,
+  LineNode,
+  ProjectDocument,
+  Variable,
+} from './schema';
 
 import {SCHEMA_VERSION} from './schema';
 
@@ -22,16 +32,37 @@ export const buildCharacter = (overrides?: Partial<Character>): Character => ({
   ...overrides,
 });
 
-export const buildNode = (overrides?: Partial<DialogNode>): DialogNode => ({
+export const buildNode = (overrides?: Partial<LineNode>): LineNode => ({
   id: 'node_1',
-  kind: 'line',
   text: 'Hello, traveler.',
   ...overrides,
+  kind: 'line',
+});
+
+export const buildChoiceNode = (overrides?: Partial<ChoiceNode>): ChoiceNode => ({
+  id: 'node_1',
+  text: 'Pick one.',
+  options: [],
+  ...overrides,
+  kind: 'choice',
+});
+
+export const buildHubNode = (overrides?: Partial<HubNode>): HubNode => ({
+  id: 'node_1',
+  ...overrides,
+  kind: 'hub',
+});
+
+export const buildJumpNode = (overrides?: Partial<JumpNode>): JumpNode => ({
+  id: 'node_1',
+  ...overrides,
+  kind: 'jump',
 });
 
 export const buildEdge = (overrides?: Partial<DialogEdge>): DialogEdge => ({
   id: 'edge_1',
   source: 'node_1',
+  role: 'flow',
   target: 'node_2',
   ...overrides,
 });
