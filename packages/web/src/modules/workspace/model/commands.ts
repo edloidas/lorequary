@@ -3,14 +3,13 @@ import {nanoid} from 'nanoid';
 import {atom, computed} from 'nanostores';
 
 import {$project, createStarterDialogue} from '@/modules/project/model/store';
+import {handleToPort} from '@/modules/workspace/flow/adapter';
 
 import type {
   Character,
   ChoiceNode,
-  ChoiceOption,
   DialogNode,
   Dialogue,
-  EdgeRole,
   JumpNode,
   LineNode,
   NodeKind,
@@ -258,92 +257,38 @@ export const duplicateNodes = (doc: ProjectDocument, dialogueId: string, nodeIds
 // * Edge commands
 //
 
-const findOption = (dialogue: Dialogue, nodeId: string, optionId: string | undefined): ChoiceOption | undefined => {
-  if (optionId === undefined) return undefined;
-
-  const node = dialogue.nodes.find(n => n.id === nodeId);
-
-  return node?.kind === 'choice' ? node.options.find(option => option.id === optionId) : undefined;
-};
-
-// Adds an edge from a port, replacing the port's previous edge when it leaves an
-// option — the canvas edits one target per port until multi-edge routing UX lands.
-const addPortEdge = (
-  doc: ProjectDocument,
-  dialogueId: string,
-  connection: {source: string; target: string; sourceOption?: string; role: EdgeRole},
-): ProjectDocument =>
-  mapDialogue(doc, dialogueId, dialogue => {
-    const {source, target, sourceOption, role} = connection;
-    const edges =
-      sourceOption === undefined
-        ? dialogue.edges
-        : dialogue.edges.filter(
-            edge => !(edge.source === source && edge.sourceOption === sourceOption && edge.role === role),
-          );
-
-    return {
-      ...dialogue,
-      edges: [...edges, {id: nanoid(8), source, ...(sourceOption === undefined ? {} : {sourceOption}), role, target}],
-    };
-  });
-
-export const addEdge = (
-  doc: ProjectDocument,
-  dialogueId: string,
-  connection: {source: string; target: string; sourceHandle?: string},
-): ProjectDocument => {
-  const dialogue = doc.dialogues.find(d => d.id === dialogueId);
-
-  if (dialogue === undefined) return doc;
-
-  const option = findOption(dialogue, connection.source, connection.sourceHandle);
-
-  return addPortEdge(doc, dialogueId, {
-    source: connection.source,
-    target: connection.target,
-    ...(option === undefined ? {} : {sourceOption: option.id}),
-    role: 'flow',
-  });
-};
-
 export const deleteEdges = (doc: ProjectDocument, dialogueId: string, edgeIds: string[]): ProjectDocument =>
   mapDialogue(doc, dialogueId, dialogue => ({
     ...dialogue,
     edges: dialogue.edges.filter(edge => !edgeIds.includes(edge.id)),
   }));
 
-// Routes a canvas connection: a check-bearing option wires its success port first,
-// then failure; further drags replace the success edge. Plain ports add flow edges.
+// Adds the edge for a canvas connection. The source handle id encodes the port —
+// `(sourceOption, role)` — so ports can hold multiple prioritized edges; exact
+// duplicates are refused at drag time and skipped here defensively.
 export const connectHandles = (
   doc: ProjectDocument,
   dialogueId: string,
   connection: {source: string; target: string; sourceHandle?: string},
-): ProjectDocument => {
-  const dialogue = doc.dialogues.find(d => d.id === dialogueId);
-
-  if (dialogue === undefined) return doc;
-
-  const option = findOption(dialogue, connection.source, connection.sourceHandle);
-
-  if (option?.skillCheck !== undefined) {
-    const outcomes = dialogue.edges.filter(
-      edge => edge.source === connection.source && edge.sourceOption === option.id,
+): ProjectDocument =>
+  mapDialogue(doc, dialogueId, dialogue => {
+    const {source, target} = connection;
+    const {sourceOption, role} = handleToPort(connection.sourceHandle);
+    const duplicate = dialogue.edges.some(
+      edge =>
+        edge.source === source && edge.sourceOption === sourceOption && edge.role === role && edge.target === target,
     );
-    const hasSuccess = outcomes.some(edge => edge.role === 'success');
-    const hasFailure = outcomes.some(edge => edge.role === 'failure');
-    const role = !hasSuccess || hasFailure ? 'success' : 'failure';
 
-    return addPortEdge(doc, dialogueId, {
-      source: connection.source,
-      target: connection.target,
-      sourceOption: option.id,
-      role,
-    });
-  }
+    if (duplicate) return dialogue;
 
-  return addEdge(doc, dialogueId, connection);
-};
+    return {
+      ...dialogue,
+      edges: [
+        ...dialogue.edges,
+        {id: nanoid(8), source, ...(sourceOption === undefined ? {} : {sourceOption}), role, target},
+      ],
+    };
+  });
 
 // Horizontal gap between a source node and a quick-added follower.
 const QUICK_ADD_OFFSET_X = 340;
@@ -364,8 +309,8 @@ export const addConnectedNode = (
 
   const origin = dialogue.editor.nodePositions[source.nodeId] ?? {x: 0, y: 0};
   const sourceOptions = sourceNode.kind === 'choice' ? sourceNode.options : [];
-  const optionIndex =
-    source.handleId === undefined ? -1 : sourceOptions.findIndex(option => option.id === source.handleId);
+  const {sourceOption} = handleToPort(source.handleId);
+  const optionIndex = sourceOption === undefined ? -1 : sourceOptions.findIndex(option => option.id === sourceOption);
   const target = position ?? {
     x: origin.x + QUICK_ADD_OFFSET_X,
     y: origin.y + (optionIndex > 0 ? optionIndex * QUICK_ADD_OFFSET_Y : 0),

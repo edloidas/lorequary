@@ -1,4 +1,4 @@
-import type {Character, CharacterType, DialogEdge, DialogNode, Dialogue, NodeGroup} from '@lorequary/core';
+import type {Character, CharacterType, DialogEdge, DialogNode, Dialogue, EdgeRole, NodeGroup} from '@lorequary/core';
 import type {Edge, Node} from '@xyflow/react';
 
 export type DialogNodeData = {
@@ -7,10 +7,41 @@ export type DialogNodeData = {
   speakerColor: string | undefined;
   speakerType: CharacterType | undefined;
   entry: boolean;
-  // Source-handle connectivity, used for quick-add affordances.
-  outgoingConnected: boolean;
-  connectedOptionIds: string[];
+  // Source handle ids with at least one edge, used for quick-add affordances.
+  connectedHandles: string[];
   [key: string]: unknown;
+};
+
+//
+// * Handle mapping
+//
+
+// Deterministic ReactFlow handle ids per port: lines and hubs use `out`,
+// options use their id; check outcomes append `:success` / `:failure`.
+// All inputs share the single `in` handle.
+export const IN_HANDLE = 'in';
+export const OUT_HANDLE = 'out';
+
+export type PortRef = {
+  sourceOption?: string;
+  role: EdgeRole;
+};
+
+export const portToHandle = (port: PortRef): string => {
+  const base = port.sourceOption ?? OUT_HANDLE;
+
+  return port.role === 'flow' ? base : `${base}:${port.role}`;
+};
+
+export const handleToPort = (handleId: string | undefined): PortRef => {
+  if (handleId === undefined) return {role: 'flow'};
+
+  const separator = handleId.lastIndexOf(':');
+  const base = separator === -1 ? handleId : handleId.slice(0, separator);
+  const suffix = separator === -1 ? '' : handleId.slice(separator + 1);
+  const role: EdgeRole = suffix === 'success' || suffix === 'failure' ? suffix : 'flow';
+
+  return {role, ...(base === OUT_HANDLE ? {} : {sourceOption: base})};
 };
 
 export type DialogFlowNode = Node<DialogNodeData>;
@@ -38,22 +69,6 @@ const collapsedMembership = (dialogue: Dialogue): Map<string, string> => {
   return membership;
 };
 
-// An option counts as connected when its ports are fully wired: a flow edge for
-// plain options, both outcome edges for check-bearing ones.
-const connectedOptionIds = (node: DialogNode, outgoing: DialogEdge[]): string[] => {
-  if (node.kind !== 'choice') return [];
-
-  return node.options
-    .filter(option => {
-      const edges = outgoing.filter(edge => edge.sourceOption === option.id);
-
-      if (option.skillCheck === undefined) return edges.some(edge => edge.role === 'flow');
-
-      return edges.some(edge => edge.role === 'success') && edges.some(edge => edge.role === 'failure');
-    })
-    .map(option => option.id);
-};
-
 const toDialogNode = (
   dialogue: Dialogue,
   node: DialogNode,
@@ -75,8 +90,7 @@ const toDialogNode = (
       speakerColor: speaker?.color,
       speakerType: speaker?.type,
       entry: dialogue.entryNodeId === node.id,
-      outgoingConnected: outgoing.some(edge => edge.sourceOption === undefined),
-      connectedOptionIds: connectedOptionIds(node, outgoing),
+      connectedHandles: [...new Set(outgoing.map(edge => portToHandle(edge)))],
     },
   };
 };
@@ -133,18 +147,21 @@ const edgePresentation = (edge: DialogEdge): {className?: string; label?: string
 type EdgeRoute = {
   source: string;
   target: string;
-  keepHandle: boolean;
 };
 
+// Handle ids only apply while the owning node is visible — endpoints remapped
+// to a collapsed group fall back to the group's default handles.
 const toFlowEdge = (edge: DialogEdge, selectedIds: Set<string>, route?: EdgeRoute): Edge => {
   const {className, label} = edgePresentation(edge);
-  const keepHandle = route?.keepHandle ?? true;
+  const sourceKept = route === undefined || route.source === edge.source;
+  const targetKept = route === undefined || route.target === edge.target;
 
   return {
     id: edge.id,
     source: route?.source ?? edge.source,
     target: route?.target ?? edge.target,
-    ...(keepHandle && edge.sourceOption !== undefined ? {sourceHandle: edge.sourceOption} : {}),
+    ...(sourceKept ? {sourceHandle: portToHandle(edge)} : {}),
+    ...(targetKept ? {targetHandle: IN_HANDLE} : {}),
     ...(label === undefined ? {} : {label}),
     ...(className === undefined ? {} : {className}),
     selected: selectedIds.has(edge.id),
@@ -187,8 +204,7 @@ export const toFlowEdges = (
       seen.add(key);
     }
 
-    // A handle only exists while its owning choice node is visible.
-    edges.push(toFlowEdge(edge, selectedIds, {source, target, keepHandle: source === edge.source}));
+    edges.push(toFlowEdge(edge, selectedIds, {source, target}));
   }
 
   return edges;

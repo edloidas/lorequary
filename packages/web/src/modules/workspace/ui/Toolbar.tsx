@@ -78,6 +78,12 @@ export const Toolbar = (): ReactElement => {
       <button type='button' className={buttonClass(dialogue !== null)} onClick={() => handleAdd('choice')}>
         ＋ Choice
       </button>
+      <button type='button' className={buttonClass(dialogue !== null)} onClick={() => handleAdd('hub')}>
+        ＋ Hub
+      </button>
+      <button type='button' className={buttonClass(dialogue !== null)} onClick={() => handleAdd('jump')}>
+        ＋ Jump
+      </button>
       <div className='mx-1 h-4 w-px bg-ink-700' />
       <button type='button' className={buttonClass(canUndo)} disabled={!canUndo} onClick={undo}>
         ↩ Undo

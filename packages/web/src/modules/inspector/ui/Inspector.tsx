@@ -5,7 +5,7 @@ import {nanoid} from 'nanoid';
 import {$numericVariables, $variableSchema} from '@/modules/project/model/derived';
 import {$project} from '@/modules/project/model/store';
 import {
-  addEdge,
+  connectHandles,
   deleteEdges,
   deleteNodes,
   renameDialogue,
@@ -269,14 +269,14 @@ const OptionEditor = ({
     edge => edge.source === node.id && edge.sourceOption === option.id && edge.role === 'flow',
   )?.target;
 
+  // The inspector edits a single flow target per option — replace the port's edges.
   const handleTargetChange = (targetId: string): void => {
     runCommand(doc => {
-      if (targetId === NONE) {
-        return deleteEdges(doc, dialogue.id, optionEdgeIds(doc, ['flow']));
-      }
+      const cleared = deleteEdges(doc, dialogue.id, optionEdgeIds(doc, ['flow']));
 
-      // addEdge replaces the option's previous flow edge.
-      return addEdge(doc, dialogue.id, {source: node.id, target: targetId, sourceHandle: option.id});
+      if (targetId === NONE) return cleared;
+
+      return connectHandles(cleared, dialogue.id, {source: node.id, target: targetId, sourceHandle: option.id});
     });
   };
 
