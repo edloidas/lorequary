@@ -18,13 +18,15 @@ import type {Dialogue} from '@lorequary/core';
 import type {ReactElement} from 'react';
 
 import {CharactersPanel, ProjectActions, VariablesPanel} from './editors';
+import {SettingsPanel} from './SettingsPanel';
 
-type Tab = 'dialogues' | 'characters' | 'variables';
+type Tab = 'dialogues' | 'characters' | 'variables' | 'settings';
 
 const TABS: {id: Tab; label: string}[] = [
   {id: 'dialogues', label: 'Dialogues'},
   {id: 'characters', label: 'Characters'},
   {id: 'variables', label: 'Variables'},
+  {id: 'settings', label: 'Settings'},
 ];
 
 const countWords = (dialogue: Dialogue): number =>
@@ -199,6 +201,11 @@ export const ProjectDashboard = (): ReactElement | null => {
         {tab === 'variables' && (
           <div className='max-w-md'>
             <VariablesPanel />
+          </div>
+        )}
+        {tab === 'settings' && (
+          <div className='max-w-md'>
+            <SettingsPanel />
           </div>
         )}
       </main>

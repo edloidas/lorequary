@@ -11,21 +11,26 @@ import {
   renameDialogue,
   runCommand,
   setEntryNode,
+  updateEdge,
   updateNode,
 } from '@/modules/workspace/model/commands';
 import {$currentDialogue, $selection, clearSelection} from '@/modules/workspace/model/store';
+import {cn} from '@/shared/lib/cn';
 import {ExpressionInput} from '@/shared/ui/ExpressionInput';
 import {Field, NumberInput, Select, SmallButton, TextArea, TextInput} from '@/shared/ui/fields';
 
-import type {DialogNodePatch} from '@/modules/workspace/model/commands';
+import type {DialogEdgePatch, DialogNodePatch} from '@/modules/workspace/model/commands';
 import type {
   CheckModifier,
   ChoiceNode,
   ChoiceOption,
+  DialogEdge,
   DialogNode,
   Dialogue,
+  EdgeRole,
   ProjectDocument,
   SkillCheck,
+  StageSlot,
   TextVariant,
 } from '@lorequary/core';
 import type {VariableSchema} from '@lorequary/parser';
@@ -235,6 +240,58 @@ const SkillCheckEditor = ({
 SkillCheckEditor.displayName = 'SkillCheckEditor';
 
 //
+// * Slot pickers
+//
+
+// One select per project-defined slot; unset slots inherit (stage) or use the default (expression).
+const SlotPickers = ({
+  label,
+  slots,
+  values,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  slots: StageSlot[];
+  values: Record<string, string> | undefined;
+  placeholder: string;
+  onChange: (next: Record<string, string> | undefined) => void;
+}): ReactElement | null => {
+  if (slots.length === 0) return null;
+
+  const set = (slotId: string, value: string): void => {
+    const next = {...values};
+
+    if (value === NONE) {
+      delete next[slotId];
+    } else {
+      next[slotId] = value;
+    }
+
+    onChange(Object.keys(next).length === 0 ? undefined : next);
+  };
+
+  return (
+    <Field label={label}>
+      <div className='flex flex-col gap-1'>
+        {slots.map(slot => (
+          <div key={slot.id} className='grid grid-cols-[88px_1fr] items-center gap-1'>
+            <span className='truncate text-[11px] text-zinc-400'>{slot.name}</span>
+            <Select
+              value={values?.[slot.id] ?? NONE}
+              options={[{value: NONE, label: placeholder}, ...slot.options.map(o => ({value: o, label: o}))]}
+              onChange={next => set(slot.id, next)}
+            />
+          </div>
+        ))}
+      </div>
+    </Field>
+  );
+};
+
+SlotPickers.displayName = 'SlotPickers';
+
+//
 // * Choice options
 //
 
@@ -311,6 +368,14 @@ const OptionEditor = ({
   return (
     <div className='flex flex-col gap-2 rounded border border-ink-800 bg-ink-900/60 p-2'>
       <TextInput value={option.text} placeholder='Option text' onCommit={next => patchOption({text: next})} />
+      <Field label='Spoken line (optional)'>
+        <TextArea
+          value={option.spokenText ?? ''}
+          rows={2}
+          placeholder='Full player line spoken on selection'
+          onCommit={next => patchOption({spokenText: next === '' ? undefined : next})}
+        />
+      </Field>
       <div className='grid grid-cols-2 gap-2'>
         <Field label='Target'>
           <Select
@@ -392,6 +457,26 @@ const NodeInspector = ({
 
   const patchNode: PatchNode = patch => {
     runCommand(doc => updateNode(doc, dialogue.id, node.id, patch));
+  };
+
+  // Removing the entry check also removes its outcome edges and failure text.
+  const handleEntryCheckChange = (next: SkillCheck | undefined): void => {
+    if (next !== undefined) {
+      patchNode({check: next});
+      return;
+    }
+
+    runCommand(doc => {
+      const edgeIds = (doc.dialogues.find(d => d.id === dialogue.id)?.edges ?? [])
+        .filter(edge => edge.source === node.id && edge.sourceOption === undefined && edge.role !== 'flow')
+        .map(edge => edge.id);
+
+      return deleteEdges(
+        updateNode(doc, dialogue.id, node.id, {check: undefined, failureText: undefined}),
+        dialogue.id,
+        edgeIds,
+      );
+    });
   };
 
   const footer = (
@@ -520,6 +605,47 @@ const NodeInspector = ({
         </Field>
       )}
 
+      {node.kind === 'line' && (
+        <Field label='Entry check — rolls when shown'>
+          {node.check === undefined ? (
+            <SmallButton onClick={() => patchNode({check: {skillId: '', baseDifficulty: 10, checkType: 'white'}})}>
+              + Add entry check
+            </SmallButton>
+          ) : (
+            <div className='flex flex-col gap-2'>
+              <SkillCheckEditor check={node.check} schema={schema} onChange={handleEntryCheckChange} />
+              <Field label='Failure text'>
+                <TextArea
+                  value={node.failureText ?? ''}
+                  rows={3}
+                  placeholder='Shown instead of the text when the roll fails'
+                  onCommit={next => patchNode({failureText: next === '' ? undefined : next})}
+                />
+              </Field>
+            </div>
+          )}
+        </Field>
+      )}
+
+      {node.kind === 'line' && (
+        <>
+          <SlotPickers
+            label='Stage overrides'
+            slots={project.settings.stageSlots ?? []}
+            values={node.stage}
+            placeholder='— inherit —'
+            onChange={next => patchNode({stage: next})}
+          />
+          <SlotPickers
+            label='Expression'
+            slots={project.settings.expressionSlots ?? []}
+            values={node.expression}
+            placeholder='— default —'
+            onChange={next => patchNode({expression: next})}
+          />
+        </>
+      )}
+
       {node.kind === 'choice' && (
         <Field label='Options'>
           <div className='flex flex-col gap-2'>
@@ -544,6 +670,91 @@ const NodeInspector = ({
 };
 
 NodeInspector.displayName = 'NodeInspector';
+
+//
+// * Edge inspector
+//
+
+const ROLE_BADGES: Record<EdgeRole, string> = {
+  flow: 'bg-violet-500/10 text-violet-300',
+  success: 'bg-emerald-500/10 text-emerald-300',
+  failure: 'bg-red-500/10 text-red-300',
+};
+
+const EdgeInspector = ({dialogue, edge}: {dialogue: Dialogue; edge: DialogEdge}): ReactElement => {
+  const schema = useStore($variableSchema);
+
+  const patchEdge = (patch: DialogEdgePatch): void => {
+    runCommand(doc => updateEdge(doc, dialogue.id, edge.id, patch));
+  };
+
+  const endpoint = (nodeId: string): string => {
+    const node = dialogue.nodes.find(n => n.id === nodeId);
+
+    return node === undefined ? nodeId : nodeLabel(node);
+  };
+
+  return (
+    <div className='flex flex-col gap-3'>
+      <div className='flex items-center justify-between'>
+        <span className='text-xs font-semibold uppercase tracking-wide text-zinc-400'>Connection</span>
+        <span className={cn('rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase', ROLE_BADGES[edge.role])}>
+          {edge.role}
+        </span>
+      </div>
+
+      <p className='text-[11px] leading-relaxed text-zinc-500'>
+        {endpoint(edge.source)}
+        {edge.sourceOption === undefined ? '' : ` · option ${edge.sourceOption}`} → {endpoint(edge.target)}
+      </p>
+
+      <Field label='Label'>
+        <TextInput
+          value={edge.label ?? ''}
+          placeholder='Annotation shown on the canvas'
+          onCommit={next => patchEdge({label: next === '' ? undefined : next})}
+        />
+      </Field>
+
+      <Field label='Priority (lower runs first)'>
+        <NumberInput
+          value={edge.priority ?? 0}
+          onCommit={next => patchEdge({priority: next === 0 ? undefined : next})}
+        />
+      </Field>
+
+      <ExpressionList
+        label='Conditions'
+        items={edge.conditions ?? []}
+        mode='condition'
+        schema={schema}
+        onChange={next => patchEdge({conditions: next.length === 0 ? undefined : next})}
+      />
+
+      <ExpressionList
+        label='Effects on traverse'
+        items={edge.effects ?? []}
+        mode='effect'
+        schema={schema}
+        onChange={next => patchEdge({effects: next.length === 0 ? undefined : next})}
+      />
+
+      <div className='flex gap-2 border-t border-ink-800 pt-3'>
+        <SmallButton
+          danger
+          onClick={() => {
+            runCommand(doc => deleteEdges(doc, dialogue.id, [edge.id]));
+            clearSelection();
+          }}
+        >
+          Delete connection
+        </SmallButton>
+      </div>
+    </div>
+  );
+};
+
+EdgeInspector.displayName = 'EdgeInspector';
 
 //
 // * Dialogue inspector
@@ -579,15 +790,25 @@ export const Inspector = (): ReactElement | null => {
 
   const selectedNode =
     selection.nodeIds.length === 1 ? dialogue.nodes.find(node => node.id === selection.nodeIds[0]) : undefined;
+  const selectedEdge =
+    selection.nodeIds.length === 0 && selection.edgeIds.length === 1
+      ? dialogue.edges.find(edge => edge.id === selection.edgeIds[0])
+      : undefined;
+
+  const renderContent = (): ReactElement => {
+    if (selectedEdge !== undefined) {
+      return <EdgeInspector key={selectedEdge.id} dialogue={dialogue} edge={selectedEdge} />;
+    }
+
+    if (selectedNode !== undefined) {
+      return <NodeInspector key={selectedNode.id} project={project} dialogue={dialogue} node={selectedNode} />;
+    }
+
+    return <DialogueInspector dialogue={dialogue} />;
+  };
 
   return (
-    <aside className='h-full w-full overflow-y-auto border-l border-ink-800 bg-ink-900 p-3'>
-      {selectedNode === undefined ? (
-        <DialogueInspector dialogue={dialogue} />
-      ) : (
-        <NodeInspector key={selectedNode.id} project={project} dialogue={dialogue} node={selectedNode} />
-      )}
-    </aside>
+    <aside className='h-full w-full overflow-y-auto border-l border-ink-800 bg-ink-900 p-3'>{renderContent()}</aside>
   );
 };
 

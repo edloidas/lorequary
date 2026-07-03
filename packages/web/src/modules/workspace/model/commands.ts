@@ -8,12 +8,14 @@ import {handleToPort} from '@/modules/workspace/flow/adapter';
 import type {
   Character,
   ChoiceNode,
+  DialogEdge,
   DialogNode,
   Dialogue,
   JumpNode,
   LineNode,
   NodeKind,
   ProjectDocument,
+  ProjectSettings,
   Variable,
 } from '@lorequary/core';
 
@@ -263,6 +265,20 @@ export const deleteEdges = (doc: ProjectDocument, dialogueId: string, edgeIds: s
     edges: dialogue.edges.filter(edge => !edgeIds.includes(edge.id)),
   }));
 
+// Routing metadata only — the port (source, sourceOption, role) is fixed at creation.
+export type DialogEdgePatch = Partial<Pick<DialogEdge, 'label' | 'conditions' | 'effects' | 'priority'>>;
+
+export const updateEdge = (
+  doc: ProjectDocument,
+  dialogueId: string,
+  edgeId: string,
+  patch: DialogEdgePatch,
+): ProjectDocument =>
+  mapDialogue(doc, dialogueId, dialogue => ({
+    ...dialogue,
+    edges: dialogue.edges.map(edge => (edge.id === edgeId ? {...edge, ...patch} : edge)),
+  }));
+
 // Adds the edge for a canvas connection. The source handle id encodes the port —
 // `(sourceOption, role)` — so ports can hold multiple prioritized edges; exact
 // duplicates are refused at drag time and skipped here defensively.
@@ -400,6 +416,11 @@ export const setEntryNode = (doc: ProjectDocument, dialogueId: string, nodeId: s
 export const renameProject = (doc: ProjectDocument, name: string): ProjectDocument => ({
   ...doc,
   meta: {...doc.meta, name},
+});
+
+export const updateSettings = (doc: ProjectDocument, patch: Partial<ProjectSettings>): ProjectDocument => ({
+  ...doc,
+  settings: {...doc.settings, ...patch},
 });
 
 //
