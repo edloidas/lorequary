@@ -267,14 +267,15 @@ const CanvasInner = (): ReactElement | null => {
     $focusNodeId.set(null);
   }, [focusNodeId, dialogue, setCenter]);
 
-  // Follow the active node while playtesting, keeping the author's zoom.
+  // Follow the active node while playtesting, panning straight over at the author's zoom.
+  // Linear interpolation avoids the default smooth zoom-out-and-back-in even when zoom is unchanged.
   useEffect(() => {
     if (playtestNodeId === null || dialogue === null) return;
 
     const position = dialogue.editor.nodePositions[playtestNodeId];
 
     if (position !== undefined) {
-      void setCenter(position.x + 128, position.y + 60, {zoom: getZoom(), duration: 350});
+      void setCenter(position.x + 128, position.y + 60, {zoom: getZoom(), duration: 350, interpolate: 'linear'});
     }
   }, [playtestNodeId, dialogue, setCenter, getZoom]);
 
