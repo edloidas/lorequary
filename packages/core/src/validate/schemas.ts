@@ -105,8 +105,15 @@ export const zSkillCheck = z.object({
   modifiers: z.array(zCheckModifier).optional(),
 });
 
+// Option ids double as ReactFlow handle bases; `:` is the role delimiter and `out` is the
+// reserved flow handle, so neither may appear in an id or the port round-trip corrupts.
+const zOptionId = z
+  .string()
+  .refine(id => !id.includes(':'), {message: 'Option id must not contain ":"'})
+  .refine(id => id !== 'out', {message: 'Option id must not be "out"'});
+
 export const zChoiceOption = z.object({
-  id: z.string(),
+  id: zOptionId,
   text: z.string(),
   spokenText: z.string().optional(),
   lineKey: z.string().optional(),

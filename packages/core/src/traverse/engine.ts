@@ -124,9 +124,11 @@ export class Playthrough {
 
   private dialogueId: string;
   private state: VariableState = {};
+  // Per-node/per-option runtime state persists across cross-dialogue jumps, so keys are
+  // namespaced by dialogue — node and option ids are only unique within a dialogue.
   private seenCounts: Record<string, number> = {};
   private failedRedChecks = new Set<string>();
-  // Resolved entry checks by node id: red results stick, white ones are re-rolled per visit.
+  // Resolved entry checks by node key: red results stick, white ones are re-rolled per visit.
   private entryChecks = new Map<string, CheckResult>();
   private currentNodeId: string | null = null;
   private history: Snapshot[] = [];
@@ -172,7 +174,7 @@ export class Playthrough {
   }
 
   seenCount(nodeId: string): number {
-    return this.seenCounts[nodeId] ?? 0;
+    return this.seenCounts[this.stateKey(nodeId)] ?? 0;
   }
 
   current(): NodeView | null {
@@ -192,7 +194,7 @@ export class Playthrough {
       return {kind: 'choice', ...base, text: this.resolveText(node), options: this.optionViews(node)};
     }
 
-    const check = node.check === undefined ? undefined : this.entryChecks.get(node.id);
+    const check = node.check === undefined ? undefined : this.entryChecks.get(this.stateKey(node.id));
 
     // Text variants apply to the success text; a failed entry check shows failureText.
     const text = check?.passed === false ? (node.failureText ?? node.text) : this.resolveText(node);
@@ -221,7 +223,7 @@ export class Playthrough {
     let role: EdgeRole = 'flow';
 
     if (node.kind === 'line' && node.check !== undefined) {
-      role = this.entryChecks.get(node.id)?.passed === false ? 'failure' : 'success';
+      role = this.entryChecks.get(this.stateKey(node.id))?.passed === false ? 'failure' : 'success';
     }
 
     this.routeFrom({nodeId: node.id, role});
@@ -257,7 +259,7 @@ export class Playthrough {
     const check = this.resolveCheck(node.id, option.skillCheck, opts.outcome);
 
     if (!check.passed && option.skillCheck.checkType === 'red') {
-      this.failedRedChecks.add(option.id);
+      this.failedRedChecks.add(this.stateKey(option.id));
     }
 
     this.routeFrom({nodeId: node.id, sourceOption: option.id, role: check.passed ? 'success' : 'failure'});
@@ -279,6 +281,12 @@ export class Playthrough {
   //
   // * Movement
   //
+
+  // Namespaces a node or option id by the active dialogue so runtime state keyed on it
+  // never collides with a same-id node/option in another dialogue.
+  private stateKey(id: string): string {
+    return `${this.dialogueId}|${id}`;
+  }
 
   private node(nodeId: string): DialogNode | undefined {
     return this.nodesByDialogue.get(this.dialogueId)?.get(nodeId);
@@ -312,7 +320,9 @@ export class Playthrough {
 
       if (node.kind === 'hub') {
         if (eligible) {
-          this.seenCounts[node.id] = (this.seenCounts[node.id] ?? 0) + 1;
+          const key = this.stateKey(node.id);
+
+          this.seenCounts[key] = (this.seenCounts[key] ?? 0) + 1;
           this.applyEffects(node.effects, node.id);
         }
 
@@ -393,8 +403,10 @@ export class Playthrough {
   }
 
   private enter(node: DialogNode): void {
+    const key = this.stateKey(node.id);
+
     this.currentNodeId = node.id;
-    this.seenCounts[node.id] = (this.seenCounts[node.id] ?? 0) + 1;
+    this.seenCounts[key] = (this.seenCounts[key] ?? 0) + 1;
     this.applyEffects(node.effects, node.id);
 
     if (node.kind === 'line' && node.check !== undefined) {
@@ -408,9 +420,12 @@ export class Playthrough {
     const check = node.check;
 
     if (check === undefined) return;
-    if (check.checkType === 'red' && this.entryChecks.has(node.id)) return;
 
-    this.entryChecks.set(node.id, this.resolveCheck(node.id, check));
+    const key = this.stateKey(node.id);
+
+    if (check.checkType === 'red' && this.entryChecks.has(key)) return;
+
+    this.entryChecks.set(key, this.resolveCheck(node.id, check));
   }
 
   //
@@ -444,7 +459,7 @@ export class Playthrough {
     conditions: string[] | undefined,
     visibility: ChoiceVisibility,
   ): OptionState {
-    if (this.failedRedChecks.has(optionId)) return 'locked_used';
+    if (this.failedRedChecks.has(this.stateKey(optionId))) return 'locked_used';
     if (this.evalConditions(conditions, node.id)) return 'available';
 
     // The authored visibility describes how the option presents while gated;
@@ -510,7 +525,7 @@ export class Playthrough {
   private context(nodeId: string): Context {
     return {
       resolve: path => this.resolveValue(path, 0),
-      seenCount: this.seenCounts[nodeId] ?? 0,
+      seenCount: this.seenCounts[this.stateKey(nodeId)] ?? 0,
     };
   }
 

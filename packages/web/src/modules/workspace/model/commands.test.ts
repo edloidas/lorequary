@@ -19,10 +19,12 @@ import {
   duplicateNodes,
   endCoalescing,
   moveNodes,
+  reconnectEdge,
   redo,
   renameDialogue,
   resetHistory,
   runCommand,
+  updateEdge,
   undo,
   updateNode,
   upsertCharacter,
@@ -232,6 +234,71 @@ describe('edge commands', () => {
     doc = $project.get() as ProjectDocument;
 
     expect(doc.dialogues[0]?.edges.some(e => e.sourceOption === 'opt1')).toBe(false);
+  });
+
+  it('reconnectEdge moves an endpoint while preserving id and routing metadata', () => {
+    const {dlg} = setup();
+
+    runCommand(d => addNode(d, dlg, 'line', {x: 0, y: 0}));
+    runCommand(d => addNode(d, dlg, 'line', {x: 0, y: 0}));
+
+    let doc = $project.get() as ProjectDocument;
+    const nodes = doc.dialogues[0]?.nodes ?? [];
+    const first = nodes[0]?.id ?? '';
+    const second = nodes[1]?.id ?? '';
+    const third = nodes[2]?.id ?? '';
+
+    runCommand(d => connectHandles(d, dlg, {source: first, target: second, sourceHandle: 'out'}));
+
+    doc = $project.get() as ProjectDocument;
+    const edgeId = doc.dialogues[0]?.edges[0]?.id ?? '';
+
+    runCommand(d =>
+      updateEdge(d, dlg, edgeId, {label: 'Onward', priority: 3, conditions: ['hero.money > 0'], effects: ['x = 1']}),
+    );
+    runCommand(d => reconnectEdge(d, dlg, edgeId, {source: first, target: third, sourceHandle: 'out'}));
+
+    doc = $project.get() as ProjectDocument;
+    const edges = doc.dialogues[0]?.edges ?? [];
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({
+      id: edgeId,
+      source: first,
+      target: third,
+      role: 'flow',
+      label: 'Onward',
+      priority: 3,
+      conditions: ['hero.money > 0'],
+      effects: ['x = 1'],
+    });
+  });
+
+  it('reconnectEdge refuses a move that duplicates another port and target', () => {
+    const {dlg} = setup();
+
+    runCommand(d => addNode(d, dlg, 'line', {x: 0, y: 0}));
+    runCommand(d => addNode(d, dlg, 'line', {x: 0, y: 0}));
+
+    let doc = $project.get() as ProjectDocument;
+    const nodes = doc.dialogues[0]?.nodes ?? [];
+    const first = nodes[0]?.id ?? '';
+    const second = nodes[1]?.id ?? '';
+    const third = nodes[2]?.id ?? '';
+
+    runCommand(d => connectHandles(d, dlg, {source: first, target: second, sourceHandle: 'out'}));
+    runCommand(d => connectHandles(d, dlg, {source: first, target: third, sourceHandle: 'out'}));
+
+    doc = $project.get() as ProjectDocument;
+    const before = doc.dialogues[0]?.edges ?? [];
+    const movable = before.find(e => e.target === third)?.id ?? '';
+
+    // Moving the second edge onto the first's target would duplicate the (first, out, flow) → second port.
+    runCommand(d => reconnectEdge(d, dlg, movable, {source: first, target: second, sourceHandle: 'out'}));
+
+    doc = $project.get() as ProjectDocument;
+
+    expect(doc.dialogues[0]?.edges).toStrictEqual(before);
   });
 });
 

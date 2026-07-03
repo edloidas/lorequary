@@ -282,4 +282,37 @@ describe('entry checks, spoken text, stage, and jumps', () => {
     expect($currentDialogueId.get()).toBe(homeId);
     expect(state.log.some(entry => entry.kind === 'jump')).toBe(false);
   });
+
+  it('does not fake a jump when the sidebar switches dialogues mid-run', () => {
+    startPlaytest({rng: () => 0});
+    playtestAdvance(); // start → gate
+
+    // Simulate a sidebar dialogue switch during an active playtest.
+    $currentDialogueId.set('dlg_two');
+
+    playtestAdvance(); // gate → choice, still in the home dialogue
+
+    const state = $playtest.get();
+
+    expect(state.view).toMatchObject({nodeId: 'choice'});
+    expect(state.log.some(entry => entry.kind === 'jump')).toBe(false);
+  });
+
+  it('still records a real jump even when the sidebar pre-selected the destination', () => {
+    startPlaytest({rng: () => 0});
+    playtestAdvance(); // start → gate
+    playtestAdvance(); // gate → choice
+
+    // Sidebar jumps ahead to the destination dialogue before the real jump fires.
+    $currentDialogueId.set('dlg_two');
+
+    playtestChoose('go'); // → jump_out → dlg_two
+
+    const state = $playtest.get();
+    const jump = state.log.find(entry => entry.kind === 'jump');
+
+    expect(jump).toMatchObject({kind: 'jump', text: 'Elsewhere'});
+    expect(state.view).toMatchObject({nodeId: 'm1'});
+    expect($currentDialogueId.get()).toBe('dlg_two');
+  });
 });

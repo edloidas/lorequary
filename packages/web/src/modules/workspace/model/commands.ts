@@ -306,6 +306,44 @@ export const connectHandles = (
     };
   });
 
+// Moves an existing edge's endpoint(s) while preserving its id and routing metadata
+// (label, priority, conditions, effects). Refuses if the move would duplicate another port+target.
+export const reconnectEdge = (
+  doc: ProjectDocument,
+  dialogueId: string,
+  edgeId: string,
+  connection: {source: string; target: string; sourceHandle?: string},
+): ProjectDocument =>
+  mapDialogue(doc, dialogueId, dialogue => {
+    const existing = dialogue.edges.find(edge => edge.id === edgeId);
+
+    if (existing === undefined) return dialogue;
+
+    const {source, target} = connection;
+    const {sourceOption, role} = handleToPort(connection.sourceHandle);
+    const duplicate = dialogue.edges.some(
+      edge =>
+        edge.id !== edgeId &&
+        edge.source === source &&
+        edge.sourceOption === sourceOption &&
+        edge.role === role &&
+        edge.target === target,
+    );
+
+    if (duplicate) return dialogue;
+
+    return {
+      ...dialogue,
+      edges: dialogue.edges.map(edge => {
+        if (edge.id !== edgeId) return edge;
+
+        const {sourceOption: _prevOption, ...rest} = edge;
+
+        return {...rest, source, ...(sourceOption === undefined ? {} : {sourceOption}), role, target};
+      }),
+    };
+  });
+
 // Horizontal gap between a source node and a quick-added follower.
 const QUICK_ADD_OFFSET_X = 340;
 const QUICK_ADD_OFFSET_Y = 56;

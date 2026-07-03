@@ -19,6 +19,7 @@ import {
   deleteEdges,
   deleteNodes,
   duplicateNodes,
+  reconnectEdge,
   renameGroup,
   runCommand,
   moveNodes,
@@ -483,8 +484,9 @@ const CanvasInner = (): ReactElement | null => {
       if (dialogue === null) return;
       if (isGroupId(connection.source) || isGroupId(connection.target)) return;
 
+      // Move the endpoint in place so the edge keeps its id, label, priority, conditions, and effects.
       runCommand(doc =>
-        connectHandles(deleteEdges(doc, dialogue.id, [oldEdge.id]), dialogue.id, {
+        reconnectEdge(doc, dialogue.id, oldEdge.id, {
           source: connection.source,
           target: connection.target,
           ...(connection.sourceHandle === null ? {} : {sourceHandle: connection.sourceHandle}),
