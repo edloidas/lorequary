@@ -1,4 +1,4 @@
-import {zProjectDocument} from '@lorequary/core';
+import {migrateProjectData, zProjectDocument} from '@lorequary/core';
 import {openDB} from 'idb';
 
 import type {ProjectDocument} from '@lorequary/core';
@@ -35,12 +35,25 @@ export const saveProject = async (doc: ProjectDocument): Promise<void> => {
   localStorage.setItem(LAST_PROJECT_KEY, doc.meta.id);
 };
 
+// Stored documents may predate the current schema — migrate before parsing.
+const parseStored = (stored: unknown): ProjectDocument | null => {
+  const migrated = migrateProjectData(stored);
+  const parsed = zProjectDocument.safeParse(migrated.data);
+
+  if (!parsed.success) return null;
+
+  if (migrated.notes.length > 0) {
+    console.warn(`Project ${parsed.data.meta.id} migrated with repairs:`, migrated.notes);
+  }
+
+  return parsed.data;
+};
+
 export const loadProject = async (projectId: string): Promise<ProjectDocument | null> => {
   const db = await getDb();
   const stored = await db.get(STORE, projectId);
-  const parsed = zProjectDocument.safeParse(stored);
 
-  return parsed.success ? parsed.data : null;
+  return parseStored(stored);
 };
 
 export const loadLastProject = async (): Promise<ProjectDocument | null> => {
@@ -63,9 +76,9 @@ export const listProjectSummaries = async (): Promise<ProjectSummary[]> => {
   const stored = await db.getAll(STORE);
 
   return stored
-    .map(raw => zProjectDocument.safeParse(raw))
-    .filter(parsed => parsed.success)
-    .map(({data}) => ({
+    .map(raw => parseStored(raw))
+    .filter(data => data !== null)
+    .map(data => ({
       id: data.meta.id,
       name: data.meta.name,
       updatedAt: data.meta.updatedAt,

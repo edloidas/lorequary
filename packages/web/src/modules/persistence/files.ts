@@ -4,7 +4,7 @@ import {$project} from '@/modules/project/model/store';
 import {resetHistory} from '@/modules/workspace/model/commands';
 import {$currentDialogueId, clearSelection} from '@/modules/workspace/model/store';
 
-import type {ProjectDocument, SerialError} from '@lorequary/core';
+import type {DeserializedProject, ProjectDocument, SerialError} from '@lorequary/core';
 import type {Result} from '@lorequary/parser';
 
 import {saveProject} from './db';
@@ -36,7 +36,7 @@ export const exportRuntimeFile = (doc: ProjectDocument): void => {
   downloadText(`${sanitizeFileName(doc.meta.name)}.runtime.json`, exportRuntimeJson(doc), 'application/json');
 };
 
-export const importProjectText = (text: string): Result<ProjectDocument, SerialError> => deserializeProject(text);
+export const importProjectText = (text: string): Result<DeserializedProject, SerialError> => deserializeProject(text);
 
 export const applyImportedProject = (doc: ProjectDocument): void => {
   $project.set(doc);
