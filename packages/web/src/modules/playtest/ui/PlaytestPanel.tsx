@@ -37,7 +37,7 @@ const speakerOf = (characterId: string | undefined): Character | undefined => {
 // * Transcript pieces
 //
 
-const CheckBanner = ({check}: {check: CheckResult}): ReactElement => (
+const CheckBanner = ({check, entry}: {check: CheckResult; entry?: boolean}): ReactElement => (
   <div
     className={cn(
       'rounded-md border px-2.5 py-1.5 text-[11px]',
@@ -46,10 +46,13 @@ const CheckBanner = ({check}: {check: CheckResult}): ReactElement => (
         : 'border-red-800/70 bg-red-950/40 text-red-300',
     )}
   >
-    <span className='font-semibold uppercase tracking-wide'>{check.passed ? 'Success' : 'Failure'}</span>
+    <span className='font-semibold uppercase tracking-wide'>
+      {entry === true && '⚅ '}
+      {check.passed ? 'Success' : 'Failure'}
+    </span>
     <span className='text-zinc-400'>
       {' '}
-      — 2d6 → {check.rolled}, total {check.total} vs DC {check.dc}
+      — rolled {check.rolled}, total {check.total} vs DC {check.dc}
     </span>
     {check.appliedModifiers.length > 0 && (
       <div className='mt-0.5 text-[10px] text-zinc-500'>
@@ -60,6 +63,23 @@ const CheckBanner = ({check}: {check: CheckResult}): ReactElement => (
 );
 
 CheckBanner.displayName = 'CheckBanner';
+
+// Full spoken player line emitted after picking an option.
+const SpokenLine = ({text}: {text: string}): ReactElement => (
+  <p className='text-[13px] italic leading-relaxed text-sky-100/90'>“{text}”</p>
+);
+
+SpokenLine.displayName = 'SpokenLine';
+
+const JumpDivider = ({text}: {text: string}): ReactElement => (
+  <div className='flex items-center gap-2 text-[10px] uppercase tracking-widest text-amber-300/80'>
+    <span className='h-px flex-1 bg-ink-700' />
+    <span>↪ {text}</span>
+    <span className='h-px flex-1 bg-ink-700' />
+  </div>
+);
+
+JumpDivider.displayName = 'JumpDivider';
 
 const SpeakerLine = ({
   characterId,
@@ -88,14 +108,24 @@ const SpeakerLine = ({
 SpeakerLine.displayName = 'SpeakerLine';
 
 const LogEntryView = ({entry}: {entry: PlaytestLogEntry}): ReactElement => {
+  if (entry.kind === 'jump') {
+    return <JumpDivider text={entry.text} />;
+  }
+
   if (entry.kind === 'line') {
-    return <SpeakerLine characterId={entry.characterId} text={entry.text} />;
+    return (
+      <div className='flex flex-col gap-1'>
+        {entry.check !== undefined && <CheckBanner entry check={entry.check} />}
+        <SpeakerLine characterId={entry.characterId} text={entry.text} />
+      </div>
+    );
   }
 
   return (
     <div className='flex flex-col gap-1'>
       <p className='text-[12px] italic leading-relaxed text-sky-200/80'>▸ {entry.text === '' ? '…' : entry.text}</p>
       {entry.check !== null && <CheckBanner check={entry.check} />}
+      {entry.spoken !== undefined && <SpokenLine text={entry.spoken} />}
     </div>
   );
 };
@@ -200,6 +230,30 @@ ChoiceStage.displayName = 'ChoiceStage';
 // * Variables
 //
 
+// Resolved stage state — dialogue defaults with the current line's overrides.
+const StageStrip = (): ReactElement | null => {
+  const playtest = useStore($playtest);
+  const project = useStore($project);
+  const entries = Object.entries(playtest.stage);
+
+  if (entries.length === 0) return null;
+
+  const slotName = (slotId: string): string =>
+    project?.settings.stageSlots?.find(slot => slot.id === slotId)?.name ?? slotId;
+
+  return (
+    <div className='flex flex-wrap gap-1 border-b border-ink-800 px-3 py-1.5'>
+      {entries.map(([slotId, value]) => (
+        <span key={slotId} className='rounded-sm bg-ink-800 px-1.5 py-0.5 text-[10px] text-zinc-400'>
+          {slotName(slotId)}: <span className='text-zinc-200'>{value}</span>
+        </span>
+      ))}
+    </div>
+  );
+};
+
+StageStrip.displayName = 'StageStrip';
+
 const VariableWatch = (): ReactElement => {
   const playtest = useStore($playtest);
   const entries = Object.entries(playtest.variables);
@@ -260,6 +314,7 @@ export const PlaytestPanel = (): ReactElement => {
       <div className='border-b border-ink-800 px-3 py-1.5'>
         <Select value={playtest.mode} options={MODE_OPTIONS} onChange={next => setPlaytestMode(next as PlaytestMode)} />
       </div>
+      <StageStrip />
 
       <div className='flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3'>
         {playtest.log.map((entry, index) => (
@@ -270,6 +325,9 @@ export const PlaytestPanel = (): ReactElement => {
 
         {playtest.view !== null && (
           <div className='flex flex-col gap-2'>
+            {playtest.view.kind === 'line' && playtest.view.check !== undefined && (
+              <CheckBanner entry check={playtest.view.check} />
+            )}
             <SpeakerLine characterId={playtest.view.characterId} text={playtest.view.text} current />
             {playtest.view.kind === 'line' ? (
               <div>
