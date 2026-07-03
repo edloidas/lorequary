@@ -9,7 +9,6 @@ import {
   $canUndo,
   addConnectedNode,
   addDialogue,
-  addEdge,
   addNode,
   coalesced,
   connectHandles,
@@ -101,7 +100,7 @@ describe('node commands', () => {
     const first = nodes[0]?.id ?? '';
     const second = nodes[1]?.id ?? '';
 
-    runCommand(d => addEdge(d, dlg, {source: first, target: second}));
+    runCommand(d => connectHandles(d, dlg, {source: first, target: second}));
     runCommand(d => {
       const dialogue = d.dialogues[0];
 
@@ -163,7 +162,7 @@ describe('node commands', () => {
 });
 
 describe('edge commands', () => {
-  it('addEdge from a choice option handle creates a flow edge and replaces the old one', () => {
+  it('connecting an option handle creates a flow edge; ports can hold several edges', () => {
     const {dlg} = setup();
 
     runCommand(d => addNode(d, dlg, 'choice', {x: 0, y: 0}));
@@ -178,7 +177,7 @@ describe('edge commands', () => {
         options: [{id: 'opt1', text: 'Go', visibility: 'available'}],
       }),
     );
-    runCommand(d => addEdge(d, dlg, {source: choiceId, target: lineId, sourceHandle: 'opt1'}));
+    runCommand(d => connectHandles(d, dlg, {source: choiceId, target: lineId, sourceHandle: 'opt1'}));
 
     doc = $project.get() as ProjectDocument;
     const optionEdges = doc.dialogues[0]?.edges.filter(e => e.sourceOption === 'opt1') ?? [];
@@ -186,18 +185,31 @@ describe('edge commands', () => {
     expect(optionEdges).toHaveLength(1);
     expect(optionEdges[0]).toMatchObject({source: choiceId, target: lineId, role: 'flow'});
 
-    // Reconnect to a new node — the old option edge is replaced, not duplicated.
+    // A second target adds a second prioritizable edge on the same port.
     runCommand(d => addNode(d, dlg, 'line', {x: 0, y: 0}));
     doc = $project.get() as ProjectDocument;
     const newLineId = doc.dialogues[0]?.nodes[doc.dialogues[0].nodes.length - 1]?.id ?? '';
 
-    runCommand(d => addEdge(d, dlg, {source: choiceId, target: newLineId, sourceHandle: 'opt1'}));
+    runCommand(d => connectHandles(d, dlg, {source: choiceId, target: newLineId, sourceHandle: 'opt1'}));
 
     doc = $project.get() as ProjectDocument;
-    const replaced = doc.dialogues[0]?.edges.filter(e => e.sourceOption === 'opt1') ?? [];
 
-    expect(replaced).toHaveLength(1);
-    expect(replaced[0]).toMatchObject({target: newLineId, role: 'flow'});
+    expect(doc.dialogues[0]?.edges.filter(e => e.sourceOption === 'opt1')).toHaveLength(2);
+  });
+
+  it('skips exact duplicate connections', () => {
+    const {dlg} = setup();
+
+    runCommand(d => addNode(d, dlg, 'line', {x: 0, y: 0}));
+
+    const doc = $project.get() as ProjectDocument;
+    const first = doc.dialogues[0]?.nodes[0]?.id ?? '';
+    const second = doc.dialogues[0]?.nodes[1]?.id ?? '';
+
+    runCommand(d => connectHandles(d, dlg, {source: first, target: second, sourceHandle: 'out'}));
+    runCommand(d => connectHandles(d, dlg, {source: first, target: second, sourceHandle: 'out'}));
+
+    expect(($project.get() as ProjectDocument).dialogues[0]?.edges).toHaveLength(1);
   });
 
   it('deleteEdges removes edges by id', () => {
@@ -210,16 +222,16 @@ describe('edge commands', () => {
     const lineId = doc.dialogues[0]?.nodes[0]?.id ?? '';
 
     runCommand(d => updateNode(d, dlg, choiceId, {options: [{id: 'opt1', text: 'Go', visibility: 'available'}]}));
-    runCommand(d => addEdge(d, dlg, {source: choiceId, target: lineId, sourceHandle: 'opt1'}));
+    runCommand(d => connectHandles(d, dlg, {source: choiceId, target: lineId, sourceHandle: 'opt1'}));
 
     doc = $project.get() as ProjectDocument;
-    const edgeId = doc.dialogues[0]?.edges[0]?.id ?? '';
+    const optionEdge = doc.dialogues[0]?.edges.find(e => e.sourceOption === 'opt1');
 
-    runCommand(d => deleteEdges(d, dlg, [edgeId]));
+    runCommand(d => deleteEdges(d, dlg, [optionEdge?.id ?? '']));
 
     doc = $project.get() as ProjectDocument;
 
-    expect(doc.dialogues[0]?.edges).toStrictEqual([]);
+    expect(doc.dialogues[0]?.edges.some(e => e.sourceOption === 'opt1')).toBe(false);
   });
 });
 
@@ -444,37 +456,17 @@ describe('quick-add and check-target commands', () => {
     expect(next?.editor.nodePositions[added?.id ?? '']).toStrictEqual({x: 640, y: 320});
   });
 
-  it('connectHandles should wire check outcome edges: success first, then failure', () => {
+  it('connectHandles should wire the role encoded in the source handle', () => {
     const {dlg, choiceId, optionId, targetId} = withChoice();
 
-    runCommand(d => connectHandles(d, dlg, {source: choiceId, target: targetId, sourceHandle: optionId}));
-    runCommand(d => connectHandles(d, dlg, {source: choiceId, target: targetId, sourceHandle: optionId}));
+    runCommand(d => connectHandles(d, dlg, {source: choiceId, target: targetId, sourceHandle: `${optionId}:success`}));
+    runCommand(d => connectHandles(d, dlg, {source: choiceId, target: targetId, sourceHandle: `${optionId}:failure`}));
 
     const dialogue = ($project.get() as ProjectDocument).dialogues[0];
     const outcomes = dialogue?.edges.filter(e => e.sourceOption === optionId) ?? [];
 
-    expect(outcomes.map(e => e.role).sort()).toStrictEqual(['failure', 'success']);
+    expect(outcomes.map(e => e.role)).toStrictEqual(['success', 'failure']);
     expect(outcomes.every(e => e.target === targetId)).toBe(true);
-  });
-
-  it('connectHandles should replace the success edge once both outcomes are wired', () => {
-    const {dlg, choiceId, optionId, targetId} = withChoice();
-
-    runCommand(d => connectHandles(d, dlg, {source: choiceId, target: targetId, sourceHandle: optionId}));
-    runCommand(d => connectHandles(d, dlg, {source: choiceId, target: targetId, sourceHandle: optionId}));
-    runCommand(d => addNode(d, dlg, 'line', {x: 400, y: 0}));
-
-    const withLine = $project.get() as ProjectDocument;
-    const newLineId = withLine.dialogues[0]?.nodes.at(-1)?.id ?? '';
-
-    runCommand(d => connectHandles(d, dlg, {source: choiceId, target: newLineId, sourceHandle: optionId}));
-
-    const dialogue = ($project.get() as ProjectDocument).dialogues[0];
-    const outcomes = dialogue?.edges.filter(e => e.sourceOption === optionId) ?? [];
-
-    expect(outcomes).toHaveLength(2);
-    expect(outcomes.find(e => e.role === 'success')).toMatchObject({target: newLineId});
-    expect(outcomes.find(e => e.role === 'failure')).toMatchObject({target: targetId});
   });
 
   it('connectHandles should create a flow edge for options without checks', () => {

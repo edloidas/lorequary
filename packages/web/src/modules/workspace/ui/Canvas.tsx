@@ -51,15 +51,17 @@ import type {
 import '@xyflow/react/dist/style.css';
 import type {MouseEvent as ReactMouseEvent, ReactElement} from 'react';
 
-import {toFlowEdges, toFlowNodes} from '../flow/adapter';
-import {ChoiceNode, GroupNode, LineNode} from './nodes';
+import {IN_HANDLE, handleToPort, toFlowEdges, toFlowNodes} from '../flow/adapter';
+import {ChoiceNode, GroupNode, HubNode, JumpNode, LineNode} from './nodes';
 
-const NODE_TYPES: NodeTypes = {line: LineNode, choice: ChoiceNode, group: GroupNode};
+const NODE_TYPES: NodeTypes = {line: LineNode, choice: ChoiceNode, hub: HubNode, jump: JumpNode, group: GroupNode};
 
 const SNAP_GRID: [number, number] = [8, 8];
 const MINIMAP_FALLBACK = '#3d4453';
 const MINIMAP_CHOICE = '#8b5cf6';
 const MINIMAP_GROUP = '#38bdf8';
+const MINIMAP_HUB = '#0ea5e9';
+const MINIMAP_JUMP = '#f59e0b';
 
 // Drops closer than this to the drag origin count as pin clicks, not placements.
 const CLICK_DISTANCE = 24;
@@ -110,6 +112,18 @@ const ContextMenu = (): ReactElement | null => {
             label='＋ Choice here'
             onPick={() =>
               runCommand(doc => addNode(doc, dialogue.id, 'choice', {x: menu.canvasX, y: menu.canvasY}, groupId))
+            }
+          />
+          <MenuItem
+            label='＋ Hub here'
+            onPick={() =>
+              runCommand(doc => addNode(doc, dialogue.id, 'hub', {x: menu.canvasX, y: menu.canvasY}, groupId))
+            }
+          />
+          <MenuItem
+            label='＋ Jump here'
+            onPick={() =>
+              runCommand(doc => addNode(doc, dialogue.id, 'jump', {x: menu.canvasX, y: menu.canvasY}, groupId))
             }
           />
         </>
@@ -208,6 +222,8 @@ const QuickAddMenu = (): ReactElement | null => {
       </span>
       <MenuItem label='▸ Line' onPick={() => pick('line')} />
       <MenuItem label='⑂ Choice' onPick={() => pick('choice')} />
+      <MenuItem label='◇ Hub' onPick={() => pick('hub')} />
+      <MenuItem label='↪ Jump' onPick={() => pick('jump')} />
     </div>
   );
 };
@@ -364,14 +380,39 @@ const CanvasInner = (): ReactElement | null => {
     [dialogue],
   );
 
+  // Structural hard blocks: self-loops, group endpoints, edges out of jumps,
+  // outcome edges from check-less ports, wrong target handles, and duplicates.
   const isValidConnection: IsValidConnection = useCallback(
-    connection =>
-      connection.source !== connection.target &&
-      connection.source !== null &&
-      connection.target !== null &&
-      !isGroupId(connection.source) &&
-      !isGroupId(connection.target),
-    [isGroupId],
+    connection => {
+      const {source, target} = connection;
+
+      if (dialogue === null || source === null || target === null) return false;
+      if (source === target) return false;
+      if (isGroupId(source) || isGroupId(target)) return false;
+      if (connection.targetHandle !== null && connection.targetHandle !== IN_HANDLE) return false;
+
+      const sourceNode = dialogue.nodes.find(node => node.id === source);
+
+      if (sourceNode === undefined || sourceNode.kind === 'jump') return false;
+
+      const {sourceOption, role} = handleToPort(connection.sourceHandle ?? undefined);
+
+      if (role !== 'flow') {
+        const checked =
+          sourceNode.kind === 'line'
+            ? sourceNode.check !== undefined
+            : sourceNode.kind === 'choice' &&
+              sourceNode.options.find(option => option.id === sourceOption)?.skillCheck !== undefined;
+
+        if (!checked) return false;
+      }
+
+      return !dialogue.edges.some(
+        edge =>
+          edge.source === source && edge.sourceOption === sourceOption && edge.role === role && edge.target === target,
+      );
+    },
+    [dialogue, isGroupId],
   );
 
   const handleConnect = useCallback(
@@ -565,6 +606,8 @@ const CanvasInner = (): ReactElement | null => {
           nodeColor={node => {
             if (node.type === 'choice') return MINIMAP_CHOICE;
             if (node.type === 'group') return MINIMAP_GROUP;
+            if (node.type === 'hub') return MINIMAP_HUB;
+            if (node.type === 'jump') return MINIMAP_JUMP;
 
             const color = (node.data as {speakerColor?: string}).speakerColor;
 
