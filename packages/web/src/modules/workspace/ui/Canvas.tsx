@@ -22,7 +22,6 @@ import {
   renameGroup,
   runCommand,
   moveNodes,
-  setCheckTarget,
   setEntryNode,
   ungroupNodes,
 } from '@/modules/workspace/model/commands';
@@ -52,7 +51,7 @@ import type {
 import '@xyflow/react/dist/style.css';
 import type {MouseEvent as ReactMouseEvent, ReactElement} from 'react';
 
-import {parseCheckEdgeId, toFlowEdges, toFlowNodes} from '../flow/adapter';
+import {toFlowEdges, toFlowNodes} from '../flow/adapter';
 import {ChoiceNode, GroupNode, LineNode} from './nodes';
 
 const NODE_TYPES: NodeTypes = {line: LineNode, choice: ChoiceNode, group: GroupNode};
@@ -118,22 +117,6 @@ const ContextMenu = (): ReactElement | null => {
     }
 
     if (menu.type === 'edge') {
-      const checkRef = parseCheckEdgeId(menu.edgeId);
-
-      if (checkRef !== null) {
-        return (
-          <MenuItem
-            danger
-            label={`Unlink ${checkRef.outcome === 'success' ? 'pass' : 'fail'} target`}
-            onPick={() =>
-              runCommand(doc =>
-                setCheckTarget(doc, dialogue.id, checkRef.nodeId, checkRef.optionId, checkRef.outcome, ''),
-              )
-            }
-          />
-        );
-      }
-
       return (
         <MenuItem
           danger

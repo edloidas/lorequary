@@ -22,6 +22,9 @@ export type ProjectMeta = {
 
 export type ProjectSettings = {
   customCharacterFields?: FieldDefinition[];
+  stageSlots?: StageSlot[];
+  expressionSlots?: ExpressionSlot[];
+  checkRoll?: CheckRollSettings;
 };
 
 export type FieldDefinition = {
@@ -30,6 +33,27 @@ export type FieldDefinition = {
   type: 'string' | 'number' | 'boolean' | 'enum';
   enumValues?: string[];
   defaultValue?: string | number | boolean;
+};
+
+// Presentation slots (place, music, visual) with author-defined values.
+// Dialogues set per-slot defaults; line nodes override per slot.
+export type StageSlot = {
+  id: string;
+  name: string;
+  options: string[];
+};
+
+// Per-character presentation slots (emotion, pose, outfit) selected per line node.
+export type ExpressionSlot = {
+  id: string;
+  name: string;
+  options: string[];
+};
+
+export type CheckRollSettings = {
+  formula: '2d6' | '1d20';
+  critFail?: boolean;
+  critSuccess?: boolean;
 };
 
 //
@@ -92,6 +116,7 @@ export type Dialogue = {
   description?: string;
   tags?: string[];
   entryNodeId: string;
+  stageDefaults?: Record<string, string>;
   nodes: DialogNode[];
   edges: DialogEdge[];
   editor: DialogueEditorState;
@@ -123,23 +148,55 @@ export type NodeGroup = {
 // * Nodes
 //
 
-export type NodeKind = 'line' | 'choice';
+export type NodeKind = 'line' | 'choice' | 'hub' | 'jump';
 
 // Conditions and effects are expression strings parsed by @lorequary/parser.
 // A conditions array is implicitly AND-ed.
-export type DialogNode = {
+type NodeBase = {
   id: string;
-  kind: NodeKind;
+  conditions?: string[];
+  effects?: string[];
+  metadata?: Record<string, unknown>;
+};
+
+type ContentNode = NodeBase & {
   characterId?: string;
-  expressionId?: string;
   text: string;
   textVariants?: TextVariant[];
   lineKey?: string;
   passiveCheck?: PassiveCheck;
-  conditions?: string[];
-  effects?: string[];
-  options?: ChoiceOption[];
-  metadata?: Record<string, unknown>;
+};
+
+export type LineNode = ContentNode & {
+  kind: 'line';
+  // Entry check: rolls when the line is shown; text (success) or failureText (failure).
+  check?: SkillCheck;
+  failureText?: string;
+  stage?: Record<string, string>;
+  expression?: Record<string, string>;
+};
+
+export type ChoiceNode = ContentNode & {
+  kind: 'choice';
+  options: ChoiceOption[];
+};
+
+// Invisible junction: no content, applies effects and routes onward on pass-through.
+export type HubNode = NodeBase & {
+  kind: 'hub';
+};
+
+// Go-to reference: no outgoing edges, the target is the reference.
+export type JumpNode = NodeBase & {
+  kind: 'jump';
+  jumpTarget?: JumpTarget;
+};
+
+export type DialogNode = LineNode | ChoiceNode | HubNode | JumpNode;
+
+export type JumpTarget = {
+  dialogueId?: string;
+  nodeId?: string;
 };
 
 export type TextVariant = {
@@ -152,6 +209,7 @@ export type TextVariant = {
 export type PassiveCheck = {
   skillId: string;
   threshold: number;
+  mode?: 'atLeast' | 'below';
 };
 
 //
@@ -163,8 +221,8 @@ export type ChoiceVisibility = 'available' | 'locked_visible' | 'locked_hidden' 
 export type ChoiceOption = {
   id: string;
   text: string;
+  spokenText?: string;
   lineKey?: string;
-  targetNodeId: string;
   conditions?: string[];
   visibility: ChoiceVisibility;
   lockReason?: string;
@@ -177,8 +235,6 @@ export type SkillCheck = {
   baseDifficulty: number;
   checkType: 'white' | 'red';
   modifiers?: CheckModifier[];
-  successTargetId: string;
-  failureTargetId: string;
 };
 
 export type CheckModifier = {
@@ -192,13 +248,18 @@ export type CheckModifier = {
 // * Edges
 //
 
+// Every connection is a persisted edge leaving a port: (source, sourceOption?, role).
+// Routing sorts a port's edges by priority and takes the first whose conditions pass.
+export type EdgeRole = 'flow' | 'success' | 'failure';
+
 export type DialogEdge = {
   id: string;
   source: string;
+  sourceOption?: string;
+  role: EdgeRole;
   target: string;
-  sourceHandle?: string;
-  targetHandle?: string;
-  label?: string;
   conditions?: string[];
+  effects?: string[];
   priority?: number;
+  label?: string;
 };

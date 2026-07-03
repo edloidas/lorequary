@@ -4,7 +4,19 @@ import {atom, computed} from 'nanostores';
 
 import {$project, createStarterDialogue} from '@/modules/project/model/store';
 
-import type {Character, DialogNode, Dialogue, NodeKind, ProjectDocument, Variable} from '@lorequary/core';
+import type {
+  Character,
+  ChoiceNode,
+  ChoiceOption,
+  DialogNode,
+  Dialogue,
+  EdgeRole,
+  JumpNode,
+  LineNode,
+  NodeKind,
+  ProjectDocument,
+  Variable,
+} from '@lorequary/core';
 
 type Position = {x: number; y: number};
 
@@ -139,13 +151,13 @@ const insertNode = (
 const buildNode = (dialogueId: string, kind: NodeKind): DialogNode => {
   const nodeId = nanoid(8);
 
-  return {
-    id: nodeId,
-    kind,
-    text: '',
-    lineKey: nodeTextKey(dialogueId, nodeId),
-    ...(kind === 'choice' ? {options: []} : {}),
-  };
+  if (kind === 'hub' || kind === 'jump') {
+    return {id: nodeId, kind};
+  }
+
+  const content = {id: nodeId, text: '', lineKey: nodeTextKey(dialogueId, nodeId)};
+
+  return kind === 'choice' ? {...content, kind, options: []} : {...content, kind};
 };
 
 export const addNode = (
@@ -156,15 +168,20 @@ export const addNode = (
   groupId?: string,
 ): ProjectDocument => insertNode(doc, dialogueId, buildNode(dialogueId, kind), position, groupId);
 
+// Flat cross-kind patch; `kind` is fixed at creation and never patched.
+export type DialogNodePatch = Partial<Omit<LineNode, 'kind'>> &
+  Partial<Omit<ChoiceNode, 'kind'>> &
+  Partial<Omit<JumpNode, 'kind'>>;
+
 export const updateNode = (
   doc: ProjectDocument,
   dialogueId: string,
   nodeId: string,
-  patch: Partial<DialogNode>,
+  patch: DialogNodePatch,
 ): ProjectDocument =>
   mapDialogue(doc, dialogueId, dialogue => ({
     ...dialogue,
-    nodes: dialogue.nodes.map(node => (node.id === nodeId ? {...node, ...patch} : node)),
+    nodes: dialogue.nodes.map(node => (node.id === nodeId ? ({...node, ...patch} as DialogNode) : node)),
   }));
 
 export const deleteNodes = (doc: ProjectDocument, dialogueId: string, nodeIds: string[]): ProjectDocument =>
@@ -216,13 +233,14 @@ export const duplicateNodes = (doc: ProjectDocument, dialogueId: string, nodeIds
 
       const copyId = nanoid(8);
       const origin = dialogue.editor.nodePositions[nodeId] ?? {x: 0, y: 0};
+      const copy = structuredClone(source);
 
-      copies.push({
-        ...structuredClone(source),
-        id: copyId,
-        lineKey: nodeTextKey(dialogueId, copyId),
-        options: source.options?.map(option => ({...structuredClone(option), id: nanoid(8)})),
-      });
+      copy.id = copyId;
+
+      if (copy.kind === 'line' || copy.kind === 'choice') copy.lineKey = nodeTextKey(dialogueId, copyId);
+      if (copy.kind === 'choice') copy.options = copy.options.map(option => ({...option, id: nanoid(8)}));
+
+      copies.push(copy);
       positions[copyId] = {x: origin.x + DUPLICATE_OFFSET, y: origin.y + DUPLICATE_OFFSET};
     }
 
@@ -240,111 +258,88 @@ export const duplicateNodes = (doc: ProjectDocument, dialogueId: string, nodeIds
 // * Edge commands
 //
 
+const findOption = (dialogue: Dialogue, nodeId: string, optionId: string | undefined): ChoiceOption | undefined => {
+  if (optionId === undefined) return undefined;
+
+  const node = dialogue.nodes.find(n => n.id === nodeId);
+
+  return node?.kind === 'choice' ? node.options.find(option => option.id === optionId) : undefined;
+};
+
+// Adds an edge from a port, replacing the port's previous edge when it leaves an
+// option — the canvas edits one target per port until multi-edge routing UX lands.
+const addPortEdge = (
+  doc: ProjectDocument,
+  dialogueId: string,
+  connection: {source: string; target: string; sourceOption?: string; role: EdgeRole},
+): ProjectDocument =>
+  mapDialogue(doc, dialogueId, dialogue => {
+    const {source, target, sourceOption, role} = connection;
+    const edges =
+      sourceOption === undefined
+        ? dialogue.edges
+        : dialogue.edges.filter(
+            edge => !(edge.source === source && edge.sourceOption === sourceOption && edge.role === role),
+          );
+
+    return {
+      ...dialogue,
+      edges: [...edges, {id: nanoid(8), source, ...(sourceOption === undefined ? {} : {sourceOption}), role, target}],
+    };
+  });
+
 export const addEdge = (
   doc: ProjectDocument,
   dialogueId: string,
   connection: {source: string; target: string; sourceHandle?: string},
-): ProjectDocument =>
-  mapDialogue(doc, dialogueId, dialogue => {
-    const {source, target, sourceHandle} = connection;
-    const sourceNode = dialogue.nodes.find(node => node.id === source);
-    const optionId =
-      sourceHandle !== undefined && sourceNode?.options?.some(option => option.id === sourceHandle)
-        ? sourceHandle
-        : undefined;
+): ProjectDocument => {
+  const dialogue = doc.dialogues.find(d => d.id === dialogueId);
 
-    const edges =
-      optionId === undefined
-        ? dialogue.edges
-        : dialogue.edges.filter(edge => !(edge.source === source && edge.sourceHandle === optionId));
+  if (dialogue === undefined) return doc;
 
-    return {
-      ...dialogue,
-      nodes:
-        optionId === undefined
-          ? dialogue.nodes
-          : dialogue.nodes.map(node =>
-              node.id === source
-                ? {
-                    ...node,
-                    options: node.options?.map(option =>
-                      option.id === optionId ? {...option, targetNodeId: target} : option,
-                    ),
-                  }
-                : node,
-            ),
-      edges: [...edges, {id: nanoid(8), source, target, ...(sourceHandle === undefined ? {} : {sourceHandle})}],
-    };
+  const option = findOption(dialogue, connection.source, connection.sourceHandle);
+
+  return addPortEdge(doc, dialogueId, {
+    source: connection.source,
+    target: connection.target,
+    ...(option === undefined ? {} : {sourceOption: option.id}),
+    role: 'flow',
   });
+};
 
 export const deleteEdges = (doc: ProjectDocument, dialogueId: string, edgeIds: string[]): ProjectDocument =>
-  mapDialogue(doc, dialogueId, dialogue => {
-    const removed = dialogue.edges.filter(edge => edgeIds.includes(edge.id));
-
-    return {
-      ...dialogue,
-      edges: dialogue.edges.filter(edge => !edgeIds.includes(edge.id)),
-      nodes: dialogue.nodes.map(node => {
-        const cleared = removed.filter(edge => edge.source === node.id && edge.sourceHandle !== undefined);
-
-        if (cleared.length === 0 || node.options === undefined) return node;
-
-        const clearedHandles = new Set(cleared.map(edge => edge.sourceHandle));
-
-        return {
-          ...node,
-          options: node.options.map(option => (clearedHandles.has(option.id) ? {...option, targetNodeId: ''} : option)),
-        };
-      }),
-    };
-  });
-
-// Skill-check outcome targets live inside options; the canvas shows them as derived edges.
-export const setCheckTarget = (
-  doc: ProjectDocument,
-  dialogueId: string,
-  nodeId: string,
-  optionId: string,
-  outcome: 'success' | 'failure',
-  targetId: string,
-): ProjectDocument =>
   mapDialogue(doc, dialogueId, dialogue => ({
     ...dialogue,
-    nodes: dialogue.nodes.map(node => {
-      if (node.id !== nodeId) return node;
-
-      return {
-        ...node,
-        options: node.options?.map(option => {
-          if (option.id !== optionId || option.skillCheck === undefined) return option;
-
-          const key = outcome === 'success' ? 'successTargetId' : 'failureTargetId';
-
-          return {...option, skillCheck: {...option.skillCheck, [key]: targetId}};
-        }),
-      };
-    }),
+    edges: dialogue.edges.filter(edge => !edgeIds.includes(edge.id)),
   }));
 
-// Routes a canvas connection: options carrying a skill check store outcome targets
-// instead of edges — the first empty outcome slot wins, then success is replaced.
+// Routes a canvas connection: a check-bearing option wires its success port first,
+// then failure; further drags replace the success edge. Plain ports add flow edges.
 export const connectHandles = (
   doc: ProjectDocument,
   dialogueId: string,
   connection: {source: string; target: string; sourceHandle?: string},
 ): ProjectDocument => {
   const dialogue = doc.dialogues.find(d => d.id === dialogueId);
-  const sourceNode = dialogue?.nodes.find(node => node.id === connection.source);
-  const option =
-    connection.sourceHandle === undefined
-      ? undefined
-      : sourceNode?.options?.find(o => o.id === connection.sourceHandle);
+
+  if (dialogue === undefined) return doc;
+
+  const option = findOption(dialogue, connection.source, connection.sourceHandle);
 
   if (option?.skillCheck !== undefined) {
-    const outcome =
-      option.skillCheck.successTargetId === '' || option.skillCheck.failureTargetId !== '' ? 'success' : 'failure';
+    const outcomes = dialogue.edges.filter(
+      edge => edge.source === connection.source && edge.sourceOption === option.id,
+    );
+    const hasSuccess = outcomes.some(edge => edge.role === 'success');
+    const hasFailure = outcomes.some(edge => edge.role === 'failure');
+    const role = !hasSuccess || hasFailure ? 'success' : 'failure';
 
-    return setCheckTarget(doc, dialogueId, connection.source, option.id, outcome, connection.target);
+    return addPortEdge(doc, dialogueId, {
+      source: connection.source,
+      target: connection.target,
+      sourceOption: option.id,
+      role,
+    });
   }
 
   return addEdge(doc, dialogueId, connection);
@@ -368,8 +363,9 @@ export const addConnectedNode = (
   if (dialogue === undefined || sourceNode === undefined) return doc;
 
   const origin = dialogue.editor.nodePositions[source.nodeId] ?? {x: 0, y: 0};
+  const sourceOptions = sourceNode.kind === 'choice' ? sourceNode.options : [];
   const optionIndex =
-    source.handleId === undefined ? -1 : (sourceNode.options ?? []).findIndex(option => option.id === source.handleId);
+    source.handleId === undefined ? -1 : sourceOptions.findIndex(option => option.id === source.handleId);
   const target = position ?? {
     x: origin.x + QUICK_ADD_OFFSET_X,
     y: origin.y + (optionIndex > 0 ? optionIndex * QUICK_ADD_OFFSET_Y : 0),

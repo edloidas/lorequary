@@ -1,7 +1,7 @@
 import {SCHEMA_VERSION, nodeTextKey, optionKey} from '@lorequary/core';
 import {nanoid} from 'nanoid';
 
-import type {Character, DialogNode, Dialogue, ProjectDocument, Variable} from '@lorequary/core';
+import type {Character, DialogEdge, DialogNode, Dialogue, LineNode, ProjectDocument, Variable} from '@lorequary/core';
 
 // Demo scene: a Disco Elysium-style encounter that exercises every capability —
 // passive skill voices, white/red checks with modifiers, gated options,
@@ -9,13 +9,13 @@ import type {Character, DialogNode, Dialogue, ProjectDocument, Variable} from '@
 
 const DLG = 'dlg_gate';
 
-const line = (id: string, characterId: string, text: string, extra?: Partial<DialogNode>): DialogNode => ({
+const line = (id: string, characterId: string, text: string, extra?: Partial<LineNode>): LineNode => ({
   id,
-  kind: 'line',
   characterId,
   text,
   lineKey: nodeTextKey(DLG, id),
   ...extra,
+  kind: 'line',
 });
 
 const CHARACTERS: Character[] = [
@@ -73,14 +73,12 @@ const NODES: DialogNode[] = [
         id: 'opt_boat',
         text: 'I just need to get to my boat.',
         lineKey: optionKey(DLG, 'n_choice1', 'opt_boat'),
-        targetNodeId: 'n_boat',
         visibility: 'available',
       },
       {
         id: 'opt_persuade',
         text: 'Surely you can make an exception for a fellow harbor worker.',
         lineKey: optionKey(DLG, 'n_choice1', 'opt_persuade'),
-        targetNodeId: '',
         visibility: 'available',
         skillCheck: {
           skillId: 'var_rhetoric',
@@ -89,15 +87,12 @@ const NODES: DialogNode[] = [
           modifiers: [
             {id: 'mod_warm', condition: 'gate.attitude >= 1', bonus: 2, description: 'She warmed to you (+2)'},
           ],
-          successTargetId: 'n_persuade_ok',
-          failureTargetId: 'n_persuade_fail',
         },
       },
       {
         id: 'opt_afraid',
         text: 'What are you afraid of, sergeant?',
         lineKey: optionKey(DLG, 'n_choice1', 'opt_afraid'),
-        targetNodeId: 'n_afraid',
         conditions: ['skills.empathy >= 7'],
         visibility: 'locked_visible',
         lockReason: '[Empathy 7]',
@@ -106,7 +101,6 @@ const NODES: DialogNode[] = [
         id: 'opt_bribe',
         text: 'Slip her twenty réal, folded small.',
         lineKey: optionKey(DLG, 'n_choice1', 'opt_bribe'),
-        targetNodeId: 'n_bribe',
         conditions: ['hero.money >= 20'],
         visibility: 'available',
         effects: ['hero.money -= 20', 'gate.attitude += 1'],
@@ -115,14 +109,11 @@ const NODES: DialogNode[] = [
         id: 'opt_authority',
         text: 'Step aside. Now.',
         lineKey: optionKey(DLG, 'n_choice1', 'opt_authority'),
-        targetNodeId: '',
         visibility: 'available',
         skillCheck: {
           skillId: 'var_authority',
           baseDifficulty: 12,
           checkType: 'red',
-          successTargetId: 'n_intimidated',
-          failureTargetId: 'n_mocked',
         },
       },
     ],
@@ -154,7 +145,6 @@ const NODES: DialogNode[] = [
         id: 'opt_callout',
         text: "There's no curfew order, is there?",
         lineKey: optionKey(DLG, 'n_choice2', 'opt_callout'),
-        targetNodeId: 'n_caught',
         conditions: ['skills.logic >= 6'],
         visibility: 'locked_hidden',
         effects: ['gate.attitude -= 1'],
@@ -163,7 +153,6 @@ const NODES: DialogNode[] = [
         id: 'opt_watch',
         text: "I'll keep an eye on the water for you.",
         lineKey: optionKey(DLG, 'n_choice2', 'opt_watch'),
-        targetNodeId: 'n_watch',
         visibility: 'available',
         effects: ['gate.attitude += 1'],
       },
@@ -200,25 +189,35 @@ const NODES: DialogNode[] = [
   ),
 ];
 
-const EDGES = [
-  {id: 'e_intro_greet', source: 'n_intro', target: 'n_greet'},
-  {id: 'e_greet_empathy', source: 'n_greet', target: 'n_empathy'},
-  {id: 'e_empathy_choice1', source: 'n_empathy', target: 'n_choice1'},
-  {id: 'e_c1_boat', source: 'n_choice1', target: 'n_boat', sourceHandle: 'opt_boat'},
-  {id: 'e_c1_afraid', source: 'n_choice1', target: 'n_afraid', sourceHandle: 'opt_afraid'},
-  {id: 'e_c1_bribe', source: 'n_choice1', target: 'n_bribe', sourceHandle: 'opt_bribe'},
-  {id: 'e_boat_c1', source: 'n_boat', target: 'n_choice1'},
-  {id: 'e_pfail_c1', source: 'n_persuade_fail', target: 'n_choice1'},
-  {id: 'e_pok_pass', source: 'n_persuade_ok', target: 'n_pass'},
-  {id: 'e_bribe_pass', source: 'n_bribe', target: 'n_pass'},
-  {id: 'e_afraid_logic', source: 'n_afraid', target: 'n_logic'},
-  {id: 'e_logic_c2', source: 'n_logic', target: 'n_choice2'},
-  {id: 'e_c2_caught', source: 'n_choice2', target: 'n_caught', sourceHandle: 'opt_callout'},
-  {id: 'e_c2_watch', source: 'n_choice2', target: 'n_watch', sourceHandle: 'opt_watch'},
-  {id: 'e_caught_c1', source: 'n_caught', target: 'n_choice1'},
-  {id: 'e_watch_pass', source: 'n_watch', target: 'n_pass'},
-  {id: 'e_intim_pass', source: 'n_intimidated', target: 'n_pass'},
-  {id: 'e_mocked_c1', source: 'n_mocked', target: 'n_choice1'},
+const EDGES: DialogEdge[] = [
+  {id: 'e_intro_greet', source: 'n_intro', role: 'flow', target: 'n_greet'},
+  {id: 'e_greet_empathy', source: 'n_greet', role: 'flow', target: 'n_empathy'},
+  {id: 'e_empathy_choice1', source: 'n_empathy', role: 'flow', target: 'n_choice1'},
+  {id: 'e_c1_boat', source: 'n_choice1', sourceOption: 'opt_boat', role: 'flow', target: 'n_boat'},
+  {id: 'e_c1_persuade_ok', source: 'n_choice1', sourceOption: 'opt_persuade', role: 'success', target: 'n_persuade_ok'},
+  {
+    id: 'e_c1_persuade_fail',
+    source: 'n_choice1',
+    sourceOption: 'opt_persuade',
+    role: 'failure',
+    target: 'n_persuade_fail',
+  },
+  {id: 'e_c1_afraid', source: 'n_choice1', sourceOption: 'opt_afraid', role: 'flow', target: 'n_afraid'},
+  {id: 'e_c1_bribe', source: 'n_choice1', sourceOption: 'opt_bribe', role: 'flow', target: 'n_bribe'},
+  {id: 'e_c1_auth_ok', source: 'n_choice1', sourceOption: 'opt_authority', role: 'success', target: 'n_intimidated'},
+  {id: 'e_c1_auth_fail', source: 'n_choice1', sourceOption: 'opt_authority', role: 'failure', target: 'n_mocked'},
+  {id: 'e_boat_c1', source: 'n_boat', role: 'flow', target: 'n_choice1'},
+  {id: 'e_pfail_c1', source: 'n_persuade_fail', role: 'flow', target: 'n_choice1'},
+  {id: 'e_pok_pass', source: 'n_persuade_ok', role: 'flow', target: 'n_pass'},
+  {id: 'e_bribe_pass', source: 'n_bribe', role: 'flow', target: 'n_pass'},
+  {id: 'e_afraid_logic', source: 'n_afraid', role: 'flow', target: 'n_logic'},
+  {id: 'e_logic_c2', source: 'n_logic', role: 'flow', target: 'n_choice2'},
+  {id: 'e_c2_caught', source: 'n_choice2', sourceOption: 'opt_callout', role: 'flow', target: 'n_caught'},
+  {id: 'e_c2_watch', source: 'n_choice2', sourceOption: 'opt_watch', role: 'flow', target: 'n_watch'},
+  {id: 'e_caught_c1', source: 'n_caught', role: 'flow', target: 'n_choice1'},
+  {id: 'e_watch_pass', source: 'n_watch', role: 'flow', target: 'n_pass'},
+  {id: 'e_intim_pass', source: 'n_intimidated', role: 'flow', target: 'n_pass'},
+  {id: 'e_mocked_c1', source: 'n_mocked', role: 'flow', target: 'n_choice1'},
 ];
 
 // Left-to-right layout, one column per beat.

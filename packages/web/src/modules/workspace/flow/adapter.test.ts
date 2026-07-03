@@ -18,10 +18,10 @@ const DIALOGUE: Dialogue = {
       id: 'n2',
       kind: 'choice',
       text: 'Decide.',
-      options: [{id: 'o1', text: 'Leave', targetNodeId: 'n1', visibility: 'available'}],
+      options: [{id: 'o1', text: 'Leave', visibility: 'available'}],
     },
   ],
-  edges: [{id: 'e1', source: 'n1', target: 'n2'}],
+  edges: [{id: 'e1', source: 'n1', role: 'flow', target: 'n2'}],
   editor: {nodePositions: {n1: {x: 10, y: 20}}},
 };
 
@@ -57,10 +57,41 @@ describe('toFlowEdges', () => {
 
     expect(edges[0]).toMatchObject({id: 'e1', source: 'n1', target: 'n2', selected: true});
   });
+
+  it('styles outcome edges by role with pass/fail labels', () => {
+    const dialogue: Dialogue = {
+      ...DIALOGUE,
+      edges: [
+        {id: 'e_ok', source: 'n2', sourceOption: 'o1', role: 'success', target: 'n1'},
+        {id: 'e_fail', source: 'n2', sourceOption: 'o1', role: 'failure', target: 'n1', label: 'busted'},
+        {id: 'e_opt', source: 'n2', sourceOption: 'o1', role: 'flow', target: 'n1'},
+      ],
+    };
+
+    const edges = toFlowEdges(dialogue, new Set());
+
+    expect(edges.find(edge => edge.id === 'e_ok')).toMatchObject({
+      sourceHandle: 'o1',
+      className: 'edge-check-success',
+      label: 'pass',
+    });
+    expect(edges.find(edge => edge.id === 'e_fail')).toMatchObject({
+      className: 'edge-check-failure',
+      label: 'busted',
+    });
+    expect(edges.find(edge => edge.id === 'e_opt')).toMatchObject({className: 'edge-option'});
+  });
 });
 
-describe('skill-check display edges', () => {
-  it('should derive pass/fail edges from option skill checks', () => {
+describe('source connectivity', () => {
+  it('should expose source connectivity for quick-add affordances', () => {
+    const nodes = toFlowNodes(DIALOGUE, CHARACTERS, new Set());
+
+    expect(nodes[0]?.data).toMatchObject({outgoingConnected: true});
+    expect(nodes[1]?.data).toMatchObject({outgoingConnected: false, connectedOptionIds: []});
+  });
+
+  it('marks a checked option connected only when both outcome edges exist', () => {
     const dialogue: Dialogue = {
       ...DIALOGUE,
       nodes: [
@@ -73,39 +104,22 @@ describe('skill-check display edges', () => {
             {
               id: 'o1',
               text: 'Try',
-              targetNodeId: '',
               visibility: 'available',
-              skillCheck: {
-                skillId: 'v1',
-                baseDifficulty: 10,
-                checkType: 'white',
-                successTargetId: 'n1',
-                failureTargetId: '',
-              },
+              skillCheck: {skillId: 'v1', baseDifficulty: 10, checkType: 'white'},
             },
           ],
         },
       ],
+      edges: [{id: 'e_ok', source: 'n2', sourceOption: 'o1', role: 'success', target: 'n1'}],
     };
 
-    const edges = toFlowEdges(dialogue, new Set());
-    const checkEdge = edges.find(edge => edge.id.startsWith('check:'));
+    expect(toFlowNodes(dialogue, CHARACTERS, new Set())[1]?.data).toMatchObject({connectedOptionIds: []});
 
-    expect(checkEdge).toMatchObject({
-      source: 'n2',
-      target: 'n1',
-      sourceHandle: 'o1',
-      className: 'edge-check-success',
-      selectable: false,
-    });
-    // The empty failure target produces no edge.
-    expect(edges.filter(edge => edge.id.startsWith('check:'))).toHaveLength(1);
-  });
+    const wired: Dialogue = {
+      ...dialogue,
+      edges: [...dialogue.edges, {id: 'e_fail', source: 'n2', sourceOption: 'o1', role: 'failure', target: 'n1'}],
+    };
 
-  it('should expose source connectivity for quick-add affordances', () => {
-    const nodes = toFlowNodes(DIALOGUE, CHARACTERS, new Set());
-
-    expect(nodes[0]?.data).toMatchObject({outgoingConnected: true});
-    expect(nodes[1]?.data).toMatchObject({outgoingConnected: false, connectedOptionIds: []});
+    expect(toFlowNodes(wired, CHARACTERS, new Set())[1]?.data).toMatchObject({connectedOptionIds: ['o1']});
   });
 });
