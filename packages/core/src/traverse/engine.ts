@@ -2,6 +2,7 @@ import {evaluateCondition, evaluateEffect, parseCondition, parseEffect} from '@l
 
 import type {
   CheckModifier,
+  CheckRollSettings,
   ChoiceNode,
   ChoiceVisibility,
   DialogNode,
@@ -40,6 +41,8 @@ export type LineView = {
   nodeId: string;
   text: string;
   characterId?: string;
+  // Entry check resolved when the line was shown.
+  check?: CheckResult;
 };
 
 export type ChoiceView = {
@@ -62,6 +65,8 @@ export type CheckResult = {
 
 export type ChooseResult = {
   check?: CheckResult;
+  // The option's spokenText, emitted as a player line after selection.
+  spoken?: string;
 };
 
 export type RuntimeIssue = {
@@ -72,10 +77,12 @@ export type RuntimeIssue = {
 };
 
 type Snapshot = {
+  dialogueId: string;
   currentNodeId: string | null;
   variables: VariableState;
   seenCounts: Record<string, number>;
   failedRedChecks: string[];
+  entryChecks: Record<string, CheckResult>;
 };
 
 // A routing port: edges leave a node (optionally a specific option) with a role.
@@ -88,7 +95,7 @@ type Port = {
 const MAX_COMPUTED_DEPTH = 10;
 const MAX_SKIP_CHAIN = 1000;
 
-const d6 = (rng: () => number): number => Math.floor(rng() * 6) + 1;
+const die = (rng: () => number, sides: number): number => Math.floor(rng() * sides) + 1;
 
 // Conditions parse to a boolean-rooted AST, but computed variables are numeric formulas —
 // evaluate the raw expression tree through the effect evaluator instead.
@@ -107,29 +114,42 @@ const evaluateNumeric = (expression: Expr, context: Context): unknown => {
 export class Playthrough {
   readonly errors: RuntimeIssue[] = [];
 
-  private readonly nodesById = new Map<string, DialogNode>();
+  private readonly dialoguesById = new Map<string, Dialogue>();
+  private readonly nodesByDialogue = new Map<string, Map<string, DialogNode>>();
   private readonly variablesById = new Map<string, Variable>();
   private readonly computedByKey = new Map<string, Variable>();
   private readonly rng: () => number;
   private readonly checkMode: CheckMode;
+  private readonly checkRoll: CheckRollSettings | undefined;
 
+  private dialogueId: string;
   private state: VariableState = {};
   private seenCounts: Record<string, number> = {};
   private failedRedChecks = new Set<string>();
+  // Resolved entry checks by node id: red results stick, white ones are re-rolled per visit.
+  private entryChecks = new Map<string, CheckResult>();
   private currentNodeId: string | null = null;
   private history: Snapshot[] = [];
   private initial: Snapshot;
 
-  constructor(
-    private readonly dialogue: Dialogue,
-    variables: Variable[],
-    options: PlaythroughOptions = {},
-  ) {
+  constructor(project: ProjectDocument, dialogueId: string, options: PlaythroughOptions = {}) {
+    const dialogue = project.dialogues.find(d => d.id === dialogueId);
+
+    if (dialogue === undefined) {
+      throw new Error(`Unknown dialogue \`${dialogueId}\``);
+    }
+
     this.rng = options.rng ?? Math.random;
     this.checkMode = options.checkMode ?? 'roll';
+    this.checkRoll = project.settings.checkRoll;
+    this.dialogueId = dialogue.id;
 
-    for (const node of dialogue.nodes) this.nodesById.set(node.id, node);
-    for (const variable of variables) {
+    for (const each of project.dialogues) {
+      this.dialoguesById.set(each.id, each);
+      this.nodesByDialogue.set(each.id, new Map(each.nodes.map(node => [node.id, node])));
+    }
+
+    for (const variable of project.variables) {
       this.variablesById.set(variable.id, variable);
       if (variable.computed) this.computedByKey.set(variable.key, variable);
       this.state[variable.key] = variable.defaultValue;
@@ -143,6 +163,10 @@ export class Playthrough {
     return this.currentNodeId === null;
   }
 
+  get activeDialogueId(): string {
+    return this.dialogueId;
+  }
+
   get variables(): Readonly<VariableState> {
     return {...this.state};
   }
@@ -154,41 +178,57 @@ export class Playthrough {
   current(): NodeView | null {
     if (this.currentNodeId === null) return null;
 
-    const node = this.nodesById.get(this.currentNodeId);
+    const node = this.node(this.currentNodeId);
 
     // Hubs and jumps pass through in moveTo and are never the resting node.
     if (node === undefined || node.kind === 'hub' || node.kind === 'jump') return null;
 
     const base = {
       nodeId: node.id,
-      text: this.resolveText(node),
       ...(node.characterId === undefined ? {} : {characterId: node.characterId}),
     };
 
     if (node.kind === 'choice') {
-      return {kind: 'choice', ...base, options: this.optionViews(node)};
+      return {kind: 'choice', ...base, text: this.resolveText(node), options: this.optionViews(node)};
     }
 
-    return {kind: 'line', ...base};
+    const check = node.check === undefined ? undefined : this.entryChecks.get(node.id);
+
+    // Text variants apply to the success text; a failed entry check shows failureText.
+    const text = check?.passed === false ? (node.failureText ?? node.text) : this.resolveText(node);
+
+    return {kind: 'line', ...base, text, ...(check === undefined ? {} : {check})};
+  }
+
+  // Stage state for the current node: dialogue defaults overridden per slot by the line.
+  currentStage(): Record<string, string> {
+    const dialogue = this.dialoguesById.get(this.dialogueId);
+    const node = this.currentNodeId === null ? undefined : this.node(this.currentNodeId);
+    const overrides = node?.kind === 'line' ? node.stage : undefined;
+
+    return {...dialogue?.stageDefaults, ...overrides};
   }
 
   advance(): void {
     if (this.currentNodeId === null) return;
 
-    const node = this.nodesById.get(this.currentNodeId);
+    const node = this.node(this.currentNodeId);
     if (node === undefined || node.kind === 'choice') return;
 
     this.history.push(this.snapshot());
 
-    // Entry-check resolution lands with the traversal engine rework (#16);
-    // until then a checked line continues through its success port.
-    const role: EdgeRole = node.kind === 'line' && node.check !== undefined ? 'success' : 'flow';
+    // A checked line routes from the outcome port of its resolved entry check.
+    let role: EdgeRole = 'flow';
+
+    if (node.kind === 'line' && node.check !== undefined) {
+      role = this.entryChecks.get(node.id)?.passed === false ? 'failure' : 'success';
+    }
 
     this.routeFrom({nodeId: node.id, role});
   }
 
   choose(optionId: string, opts: {outcome?: 'success' | 'failure'} = {}): ChooseResult {
-    const node = this.currentNodeId === null ? undefined : this.nodesById.get(this.currentNodeId);
+    const node = this.currentNodeId === null ? undefined : this.node(this.currentNodeId);
 
     if (node === undefined || node.kind !== 'choice') {
       throw new Error('Cannot choose: the current node is not a choice');
@@ -207,9 +247,11 @@ export class Playthrough {
     this.history.push(this.snapshot());
     this.applyEffects(option.effects, node.id);
 
+    const spoken = option.spokenText === undefined ? {} : {spoken: option.spokenText};
+
     if (option.skillCheck === undefined) {
       this.routeFrom({nodeId: node.id, sourceOption: option.id, role: 'flow'});
-      return {};
+      return {...spoken};
     }
 
     const check = this.resolveCheck(node.id, option.skillCheck, opts.outcome);
@@ -220,7 +262,7 @@ export class Playthrough {
 
     this.routeFrom({nodeId: node.id, sourceOption: option.id, role: check.passed ? 'success' : 'failure'});
 
-    return {check};
+    return {check, ...spoken};
   }
 
   back(): void {
@@ -238,6 +280,14 @@ export class Playthrough {
   // * Movement
   //
 
+  private node(nodeId: string): DialogNode | undefined {
+    return this.nodesByDialogue.get(this.dialogueId)?.get(nodeId);
+  }
+
+  private edges(): Dialogue['edges'] {
+    return this.dialoguesById.get(this.dialogueId)?.edges ?? [];
+  }
+
   // Walk to the first eligible line/choice starting at nodeId. Gated nodes are skipped
   // through their ports; hubs pass through applying effects; jumps follow their target.
   private moveTo(startNodeId: string): void {
@@ -246,7 +296,7 @@ export class Playthrough {
     for (let hops = 0; hops < MAX_SKIP_CHAIN; hops += 1) {
       if (nodeId === null) break;
 
-      const node = this.nodesById.get(nodeId);
+      const node = this.node(nodeId);
 
       if (node === undefined) {
         this.currentNodeId = null;
@@ -254,7 +304,7 @@ export class Playthrough {
       }
 
       if (node.kind === 'jump') {
-        nodeId = this.jumpDestination(node.jumpTarget);
+        nodeId = this.followJump(node.jumpTarget);
         continue;
       }
 
@@ -284,13 +334,22 @@ export class Playthrough {
     this.currentNodeId = null;
   }
 
-  // Cross-dialogue jumps require the project-scoped engine rework (#16); the
-  // single-dialogue playthrough ends there for now.
-  private jumpDestination(target: JumpTarget | undefined): string | null {
+  // Same-dialogue jumps move within the graph; cross-dialogue jumps switch the active
+  // dialogue while variables, seen counts, and check results persist.
+  private followJump(target: JumpTarget | undefined): string | null {
     if (target === undefined) return null;
-    if (target.dialogueId !== undefined && target.dialogueId !== this.dialogue.id) return null;
 
-    return target.nodeId ?? null;
+    if (target.dialogueId === undefined || target.dialogueId === this.dialogueId) {
+      return target.nodeId ?? null;
+    }
+
+    const dialogue = this.dialoguesById.get(target.dialogueId);
+
+    if (dialogue === undefined) return null;
+
+    this.dialogueId = dialogue.id;
+
+    return target.nodeId ?? dialogue.entryNodeId;
   }
 
   private routeFrom(port: Port): void {
@@ -307,7 +366,7 @@ export class Playthrough {
   // The routing primitive: priority-sorted edges of a port, first edge whose
   // conditions pass wins; the winning edge's effects apply on traversal.
   private nextTarget(port: Port): string | null {
-    const edges = this.dialogue.edges
+    const edges = this.edges()
       .filter(edge => edge.source === port.nodeId && edge.sourceOption === port.sourceOption && edge.role === port.role)
       .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
 
@@ -337,6 +396,21 @@ export class Playthrough {
     this.currentNodeId = node.id;
     this.seenCounts[node.id] = (this.seenCounts[node.id] ?? 0) + 1;
     this.applyEffects(node.effects, node.id);
+
+    if (node.kind === 'line' && node.check !== undefined) {
+      this.resolveEntryCheck(node);
+    }
+  }
+
+  // Entry checks roll when the line is shown: white re-rolls on every visit,
+  // red rolls once per playthrough and the result sticks on revisit.
+  private resolveEntryCheck(node: LineNode): void {
+    const check = node.check;
+
+    if (check === undefined) return;
+    if (check.checkType === 'red' && this.entryChecks.has(node.id)) return;
+
+    this.entryChecks.set(node.id, this.resolveCheck(node.id, check));
   }
 
   //
@@ -382,16 +456,26 @@ export class Playthrough {
   // * Skill checks
   //
 
-  private resolveCheck(nodeId: string, skillCheck: SkillCheck, forced?: 'success' | 'failure'): CheckResult {
-    const appliedModifiers = (skillCheck.modifiers ?? []).filter(modifier => {
-      if (this.evalCondition(modifier.condition, nodeId, 'modifier')) return true;
-      return false;
-    });
+  private roll(): number {
+    if (this.checkRoll?.formula === '1d20') return die(this.rng, 20);
 
-    const rolled = d6(this.rng) + d6(this.rng);
+    return die(this.rng, 6) + die(this.rng, 6);
+  }
+
+  private rollBounds(): {min: number; max: number} {
+    return this.checkRoll?.formula === '1d20' ? {min: 1, max: 20} : {min: 2, max: 12};
+  }
+
+  private resolveCheck(nodeId: string, skillCheck: SkillCheck, forced?: 'success' | 'failure'): CheckResult {
+    const appliedModifiers = (skillCheck.modifiers ?? []).filter(modifier =>
+      this.evalCondition(modifier.condition, nodeId, 'modifier'),
+    );
+
+    const rolled = this.roll();
     const bonus = appliedModifiers.reduce((sum, modifier) => sum + modifier.bonus, 0);
     const total = rolled + this.skillValue(skillCheck.skillId) + bonus;
     const dc = skillCheck.baseDifficulty;
+    const {min, max} = this.rollBounds();
 
     let passed: boolean;
 
@@ -401,9 +485,9 @@ export class Playthrough {
       passed = true;
     } else if (this.checkMode === 'always_fail') {
       passed = false;
-    } else if (rolled === 2) {
+    } else if (rolled === min && (this.checkRoll?.critFail ?? true)) {
       passed = false;
-    } else if (rolled === 12) {
+    } else if (rolled === max && (this.checkRoll?.critSuccess ?? true)) {
       passed = true;
     } else {
       passed = total >= dc;
@@ -503,18 +587,22 @@ export class Playthrough {
 
   private snapshot(): Snapshot {
     return {
+      dialogueId: this.dialogueId,
       currentNodeId: this.currentNodeId,
       variables: {...this.state},
       seenCounts: {...this.seenCounts},
       failedRedChecks: [...this.failedRedChecks],
+      entryChecks: Object.fromEntries(this.entryChecks),
     };
   }
 
   private restore(snapshot: Snapshot): void {
+    this.dialogueId = snapshot.dialogueId;
     this.currentNodeId = snapshot.currentNodeId;
     this.state = {...snapshot.variables};
     this.seenCounts = {...snapshot.seenCounts};
     this.failedRedChecks = new Set(snapshot.failedRedChecks);
+    this.entryChecks = new Map(Object.entries(snapshot.entryChecks));
   }
 }
 
@@ -522,12 +610,4 @@ export const startPlaythrough = (
   project: ProjectDocument,
   dialogueId: string,
   options?: PlaythroughOptions,
-): Playthrough => {
-  const dialogue = project.dialogues.find(d => d.id === dialogueId);
-
-  if (dialogue === undefined) {
-    throw new Error(`Unknown dialogue \`${dialogueId}\``);
-  }
-
-  return new Playthrough(dialogue, project.variables, options);
-};
+): Playthrough => new Playthrough(project, dialogueId, options);
