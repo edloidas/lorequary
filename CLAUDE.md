@@ -63,7 +63,9 @@ One **main** label (`bug`, `feature`, `improvement`, `epic`) + 0–2 **supportiv
 ### Pull Requests
 
 - **Title:** `<type>: <description> #<number>`
-- **Body:** concise what/why, no emojis, one blank line between sections. End with `Closes #<number>` and a `[Claude Code session](<link>)` line.
+- **Body:** concise what/why, no emojis, one blank line between sections.
+- Multiple issues go on one `Closes` line: `Closes #1 #23 #456`.
+- End with the session link as the last line, wrapped small: `<sub>[Claude Code session](<link>)</sub>`. It is the only attribution — never append a second generated footer, `---` rule, or promotional line, including on PRs created from the web.
 
 ## Toolchain
 
