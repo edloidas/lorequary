@@ -1,8 +1,12 @@
 # @lorequary/parser
 
-Expression language parser, validator, and evaluator for game dialogue systems. Zero dependencies, runtime-neutral, ESM.
+Expression language parser, validator, and evaluator for game dialogue systems. Zero dependencies, runtime-neutral, ESM. Built for [Lorequary](https://github.com/edloidas/lorequary), a visual editor for branching game dialogs, but usable in any game runtime that stores conditions and effects as expression strings.
 
-Built for [Lorequary](https://github.com/edloidas/lorequary), a visual editor for branching game dialogs — but usable in any game runtime that stores conditions and effects as expression strings.
+## Install
+
+```bash
+pnpm add @lorequary/parser
+```
 
 ## The language
 
