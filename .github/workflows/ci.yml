@@ -1,4 +1,4 @@
-name: Scriptorium Test-Build Workflow
+name: CI
 
 on:
   push:
