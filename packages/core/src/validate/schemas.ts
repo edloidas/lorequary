@@ -57,8 +57,8 @@ export const zCharacter = z.object({
   spriteUrl: z.string().optional(),
   expressions: z.array(zExpression).optional(),
   skillId: z.string().optional(),
-  customFields: z.record(z.unknown()).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const zComputedExpression = z.object({
@@ -137,7 +137,7 @@ const zNodeBase = {
   id: z.string(),
   conditions: z.array(z.string()).optional(),
   effects: z.array(z.string()).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 };
 
 const zContentNode = {
@@ -154,8 +154,8 @@ export const zLineNode = z.object({
   kind: z.literal('line'),
   check: zSkillCheck.optional(),
   failureText: z.string().optional(),
-  stage: z.record(z.string()).optional(),
-  expression: z.record(z.string()).optional(),
+  stage: z.record(z.string(), z.string()).optional(),
+  expression: z.record(z.string(), z.string()).optional(),
 });
 
 export const zChoiceNode = z.object({
@@ -204,9 +204,9 @@ export const zViewport = z.object({
 });
 
 export const zDialogueEditorState = z.object({
-  nodePositions: z.record(zPosition),
-  nodeSizes: z.record(zSize).optional(),
-  nodeZIndices: z.record(z.number()).optional(),
+  nodePositions: z.record(z.string(), zPosition),
+  nodeSizes: z.record(z.string(), zSize).optional(),
+  nodeZIndices: z.record(z.string(), z.number()).optional(),
   viewport: zViewport.optional(),
   groups: z.array(zNodeGroup).optional(),
 });
@@ -217,7 +217,7 @@ export const zDialogue = z.object({
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
   entryNodeId: z.string(),
-  stageDefaults: z.record(z.string()).optional(),
+  stageDefaults: z.record(z.string(), z.string()).optional(),
   nodes: z.array(zDialogNode),
   edges: z.array(zDialogEdge),
   editor: zDialogueEditorState,

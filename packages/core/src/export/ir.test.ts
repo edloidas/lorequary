@@ -1,5 +1,3 @@
-import {describe, expect, it} from 'vite-plus/test';
-
 import {buildDialogue, buildProject} from '../fixtures';
 import {exportRuntimeJson, toRuntimeDocument} from './ir';
 

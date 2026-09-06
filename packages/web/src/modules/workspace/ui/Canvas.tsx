@@ -50,6 +50,7 @@ import type {
   NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+
 import type {MouseEvent as ReactMouseEvent, ReactElement} from 'react';
 
 import {IN_HANDLE, handleToPort, toFlowEdges, toFlowNodes} from '../flow/adapter';

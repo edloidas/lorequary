@@ -19,7 +19,6 @@
     "jsx": "react-jsx",
     "types": ["vite-plus/test/globals"],
     "paths": {
-      "vitest": ["./node_modules/vite-plus/dist/test"],
       "@/*": ["./src/*"]
     }
   },

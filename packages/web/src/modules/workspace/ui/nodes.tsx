@@ -140,9 +140,10 @@ const InlineText = ({nodeId, text, placeholder}: {nodeId: string; text: string; 
 
   if (!editing) {
     return (
-      <p
+      <button
+        type='button'
         className={cn(
-          'line-clamp-3 min-h-4 cursor-text text-xs leading-relaxed',
+          'line-clamp-3 min-h-4 w-full cursor-text text-left text-xs leading-relaxed',
           text === '' ? 'italic text-zinc-500' : 'text-zinc-200',
         )}
         title='Double-click to edit'
@@ -150,9 +151,16 @@ const InlineText = ({nodeId, text, placeholder}: {nodeId: string; text: string; 
           event.stopPropagation();
           setEditing(true);
         }}
+        onKeyDown={event => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+
+          event.preventDefault();
+          event.stopPropagation();
+          setEditing(true);
+        }}
       >
         {text === '' ? placeholder : text}
-      </p>
+      </button>
     );
   }
 

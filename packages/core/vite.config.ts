@@ -127,6 +127,8 @@ export default defineConfig({
         rules: {
           'no-console': 'off',
           'vitest/consistent-vitest-vi': 'error',
+          // Tests narrow discriminated unions with `expect.unreachable`, which always throws.
+          'vitest/no-conditional-expect': 'off',
           'vitest/no-conditional-tests': 'error',
           'vitest/no-importing-vitest-globals': 'error',
         },

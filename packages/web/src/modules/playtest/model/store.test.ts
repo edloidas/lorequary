@@ -1,5 +1,3 @@
-import {beforeEach, describe, expect, it} from 'vite-plus/test';
-
 import {$project, createDefaultProject} from '@/modules/project/model/store';
 import {$currentDialogueId} from '@/modules/workspace/model/store';
 

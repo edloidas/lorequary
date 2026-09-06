@@ -13,6 +13,7 @@
   },
   "scripts": {
     "check": "vp check && vp run typecheck",
+    "check:fix": "vp check --fix && vp run typecheck",
     "clean": "rm -rf dist coverage reports",
     "typecheck": "tsgo --noEmit",
     "test": "vp test --run",
@@ -20,13 +21,13 @@
   },
   "dependencies": {
     "@lorequary/parser": "workspace:*",
-    "zod": "^3.25.67"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@typescript/native-preview": "7.0.0-dev.20260401.1",
-    "@vitest/coverage-v8": "^4.1.2",
-    "typescript": "^6.0.2",
-    "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.15",
+    "@typescript/native-preview": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   }
 }

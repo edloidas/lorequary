@@ -1,5 +1,3 @@
-import {describe, expect, it, beforeEach} from 'vite-plus/test';
-
 import {$project, createDefaultProject} from '@/modules/project/model/store';
 
 import type {DialogNode, ProjectDocument} from '@lorequary/core';

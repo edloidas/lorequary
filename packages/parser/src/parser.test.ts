@@ -1,5 +1,3 @@
-import {describe, expect, it} from 'vite-plus/test';
-
 import type {ConditionNode, EffectNode, Expr} from './ast';
 
 import {parseCondition, parseEffect} from './parser';

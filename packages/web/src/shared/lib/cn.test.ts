@@ -1,5 +1,3 @@
-import {describe, expect, it} from 'vite-plus/test';
-
 import {cn} from './cn';
 
 describe('cn', () => {

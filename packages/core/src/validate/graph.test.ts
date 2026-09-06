@@ -1,5 +1,3 @@
-import {describe, expect, it} from 'vite-plus/test';
-
 import type {GraphIssue} from './graph';
 
 import {

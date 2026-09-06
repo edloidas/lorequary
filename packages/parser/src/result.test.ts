@@ -1,5 +1,3 @@
-import {describe, expect, it} from 'vite-plus/test';
-
 import type {Result} from './result';
 
 import {err, ok} from './result';

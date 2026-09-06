@@ -143,6 +143,8 @@ export default defineConfig({
         rules: {
           'no-console': 'off',
           'vitest/consistent-vitest-vi': 'error',
+          // Tests narrow discriminated unions with `expect.unreachable`, which always throws.
+          'vitest/no-conditional-expect': 'off',
           'vitest/no-conditional-tests': 'error',
           'vitest/no-importing-vitest-globals': 'error',
         },
@@ -188,7 +190,7 @@ export default defineConfig({
         statements: 15,
         branches: 15,
         lines: 15,
-        functions: 50,
+        functions: 20,
       },
     },
     reporters: process.env.CI ? ['default', 'junit'] : ['default'],

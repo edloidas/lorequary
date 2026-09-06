@@ -182,7 +182,7 @@ export const updateNode = (
 ): ProjectDocument =>
   mapDialogue(doc, dialogueId, dialogue => ({
     ...dialogue,
-    nodes: dialogue.nodes.map(node => (node.id === nodeId ? ({...node, ...patch} as DialogNode) : node)),
+    nodes: dialogue.nodes.map(node => (node.id === nodeId ? {...node, ...patch} : node)),
   }));
 
 export const deleteNodes = (doc: ProjectDocument, dialogueId: string, nodeIds: string[]): ProjectDocument =>

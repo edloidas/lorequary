@@ -1,5 +1,3 @@
-import {describe, expect, it} from 'vite-plus/test';
-
 import {lockReasonKey, modifierKey, nodeTextKey, optionKey, variantKey} from './keys';
 
 describe('localization keys', () => {

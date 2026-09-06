@@ -1,5 +1,4 @@
 import {atom} from 'nanostores';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vite-plus/test';
 
 import {startAutosave} from './autosave';
 
@@ -14,7 +13,7 @@ describe('startAutosave', () => {
 
   it('debounces rapid changes into a single save of the latest value', () => {
     const $doc = atom<string | null>(null);
-    const save = vi.fn();
+    const save = vi.fn<(value: string) => void>();
     const stop = startAutosave($doc, save, 2000);
 
     $doc.set('v1');
@@ -34,7 +33,7 @@ describe('startAutosave', () => {
 
   it('ignores null values and stops cleanly', () => {
     const $doc = atom<string | null>(null);
-    const save = vi.fn();
+    const save = vi.fn<(value: string) => void>();
     const stop = startAutosave($doc, save, 2000);
 
     $doc.set(null);

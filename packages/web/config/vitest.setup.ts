@@ -42,9 +42,9 @@ if (!('decode' in HTMLImageElement.prototype)) {
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: vi.fn().mockImplementation((query: string) => ({
+  value: vi.fn<(query: string) => Partial<MediaQueryList>>().mockImplementation((query: string) => ({
     matches: false,
     media: query,
-    addEventListener: vi.fn(),
+    addEventListener: vi.fn<MediaQueryList['addEventListener']>(),
   })),
 });

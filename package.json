@@ -7,14 +7,14 @@
   "scripts": {
     "build": "pnpm --filter @lorequary/web run build",
     "check": "pnpm -r --parallel run check",
+    "check:fix": "pnpm -r --parallel run check:fix",
     "test": "pnpm -r --parallel run test",
     "test:ci": "pnpm -r --parallel run test:ci",
-    "dev": "pnpm --filter @lorequary/web exec vp dev",
-    "prepare": "pnpm --filter @lorequary/web run prepare"
+    "dev": "pnpm --filter @lorequary/web exec vp dev"
   },
   "engines": {
-    "node": ">= 22.15.0",
-    "pnpm": ">= 10.11.0"
+    "node": ">= 26.8.1",
+    "pnpm": ">= 12.0.0"
   },
-  "packageManager": "pnpm@10.33.0"
+  "packageManager": "pnpm@12.3.4"
 }

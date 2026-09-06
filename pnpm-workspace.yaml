@@ -1,23 +1,22 @@
 packages:
   - packages/*
 catalog:
-  vite: npm:@voidzero-dev/vite-plus-core@latest
-  vite-plus: ^0.1.15
-  vitest: npm:@voidzero-dev/vite-plus-test@latest
-ignoredBuiltDependencies:
-  - unrs-resolver
+  '@typescript/native-preview': 7.0.0-dev.20260707.2
+  # Must match the vitest that vite-plus bundles; `vp toolchain` prints it.
+  '@vitest/coverage-v8': 4.1.11
+  typescript: ^7.0.2
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.0
+  vite-plus: 0.3.0
+allowBuilds:
+  esbuild: true
+  unrs-resolver: false
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - '@typescript/native-preview'
-onlyBuiltDependencies:
-  - esbuild
 overrides:
-  vite: 'catalog:'
-  vitest: 'catalog:'
+  vite@*: 'catalog:'
 peerDependencyRules:
   allowAny:
     - vite
-    - vitest
   allowedVersions:
     vite: '*'
-    vitest: '*'

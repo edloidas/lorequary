@@ -1,5 +1,3 @@
-import {describe, expect, it} from 'vite-plus/test';
-
 import type {ConditionNode, EffectNode} from './ast';
 import type {ValidationError, VariableSchema} from './validate';
 

@@ -1,5 +1,3 @@
-import {describe, expect, it} from 'vite-plus/test';
-
 import {$project, createDefaultProject} from '@/modules/project/model/store';
 
 import type {GraphIssue, ProjectDocument} from '@lorequary/core';

@@ -1,5 +1,3 @@
-import {describe, expect, it} from 'vite-plus/test';
-
 import type {Character, Dialogue} from '@lorequary/core';
 
 import {handleToPort, portToHandle, toFlowEdges, toFlowNodes} from './adapter';

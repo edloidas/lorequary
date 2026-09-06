@@ -1,5 +1,3 @@
-import {describe, expect, it} from 'vite-plus/test';
-
 import {buildProject} from '../fixtures';
 import {SCHEMA_VERSION} from '../schema';
 import {deserializeProject, serializeProject} from './serial';

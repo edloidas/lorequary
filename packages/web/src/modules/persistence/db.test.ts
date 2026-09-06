@@ -1,5 +1,4 @@
 import {SCHEMA_VERSION} from '@lorequary/core';
-import {describe, expect, it} from 'vite-plus/test';
 
 import {createDefaultProject} from '@/modules/project/model/store';
 

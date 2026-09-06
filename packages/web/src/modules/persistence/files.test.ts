@@ -1,9 +1,7 @@
 import {serializeProject} from '@lorequary/core';
-import {describe, expect, it, vi} from 'vite-plus/test';
-
 // jsdom has no indexedDB — persistence is exercised in the real browser, not here.
 vi.mock('./db', () => ({
-  saveProject: vi.fn().mockResolvedValue(undefined),
+  saveProject: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
 }));
 
 import {$project, createDefaultProject} from '@/modules/project/model/store';

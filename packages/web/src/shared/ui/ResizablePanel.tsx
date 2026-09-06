@@ -1,4 +1,4 @@
-import {useRef, useState} from 'react';
+import {useState} from 'react';
 
 import {cn} from '@/shared/lib/cn';
 
@@ -30,28 +30,27 @@ export const ResizablePanel = ({
   className,
   children,
 }: ResizablePanelProps): ReactElement => {
-  const widthRef = useRef(0);
   const [width, setWidth] = useState(() => readStoredWidth(storageKey, defaultWidth, minWidth, maxWidth));
-
-  widthRef.current = width;
 
   const handlePointerDown = (event: ReactPointerEvent): void => {
     event.preventDefault();
 
     const startX = event.clientX;
-    const startWidth = widthRef.current;
+    const startWidth = width;
+    let latestWidth = startWidth;
 
     const handleMove = (moveEvent: PointerEvent): void => {
       const delta = moveEvent.clientX - startX;
       const next = edge === 'right' ? startWidth + delta : startWidth - delta;
 
-      setWidth(Math.min(maxWidth, Math.max(minWidth, next)));
+      latestWidth = Math.min(maxWidth, Math.max(minWidth, next));
+      setWidth(latestWidth);
     };
 
     const handleUp = (): void => {
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
-      localStorage.setItem(storageKey, String(widthRef.current));
+      localStorage.setItem(storageKey, String(latestWidth));
     };
 
     window.addEventListener('pointermove', handleMove);

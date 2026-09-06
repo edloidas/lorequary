@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
 
 # Cancel superseded runs on the same PR/branch
 concurrency:
@@ -24,7 +24,7 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: 24
+          node-version: 26
           cache: true
 
       - name: Check
@@ -55,7 +55,7 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: 24
+          node-version: 26
           cache: true
 
       - name: Build

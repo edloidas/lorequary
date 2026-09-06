@@ -22,12 +22,11 @@ jobs:
       - uses: actions/checkout@v4
 
       # Reads the pnpm version from the root packageManager field.
-      # Stay on pnpm 10 — pnpm 11 has an OIDC publish regression (pnpm/pnpm#11513).
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 26
           cache: pnpm
           registry-url: https://registry.npmjs.org
 

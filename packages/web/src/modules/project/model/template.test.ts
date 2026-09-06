@@ -1,5 +1,4 @@
 import {startPlaythrough, validateProject} from '@lorequary/core';
-import {describe, expect, it} from 'vite-plus/test';
 
 import {createDemoProject} from './template';
 
