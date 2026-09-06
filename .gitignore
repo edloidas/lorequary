@@ -30,6 +30,4 @@ npm-debug.log*
 
 .eslintcache
 
-.vscode/*
-!.vscode/settings.json
-!.vscode/extensions.json
+.vscode/
