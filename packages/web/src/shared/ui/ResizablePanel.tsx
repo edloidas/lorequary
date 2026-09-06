@@ -1,6 +1,5 @@
+import {cn} from 'cn';
 import {useState} from 'react';
-
-import {cn} from '@/shared/lib/cn';
 
 import type {PointerEvent as ReactPointerEvent, ReactElement, ReactNode} from 'react';
 

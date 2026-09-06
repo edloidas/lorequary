@@ -37,8 +37,10 @@ Inside `packages/web/` the `vp` CLI is available directly (`vp test --run`,
   'vite-plus'`, `import {vi} from 'vite-plus/test'`.
 - Never install `vitest`, `oxlint`, `oxfmt`, or `tsdown`; Vite+ bundles them. Use
   `vp add` / `vp remove` / `vp dlx`.
-- Lint, format, and test config all live in `packages/web/vite.config.ts`.
-- Typecheck is `tsgo` (TypeScript Go), not `tsc`.
+- Lint, format, and test config live in each package's `vite.config.ts`. The
+  shared base is `tooling/{lint,fmt,test}.ts` at the root; `core` and `parser`
+  use it as-is, `web` spreads it and layers the react/jsx-a11y rules on top.
+- Typecheck is `tsc` from TypeScript 7 (the native Go compiler; `tsgo`/`@typescript/native-preview` is gone).
 - `// *` marks section dividers in large files — the codebase uses them, keep them.
 - Docs are flat in `docs/`, lowercase kebab-case, no date or number prefixes.
   `prd.md` is the product spec; the rest are technical specs named by topic.

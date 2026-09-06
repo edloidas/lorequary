@@ -48,14 +48,13 @@
     "check": "vp check && vp run typecheck",
     "check:fix": "vp check --fix && vp run typecheck",
     "clean": "rm -rf dist coverage reports",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vp test --run",
     "test:ci": "vp test --run --coverage",
     "prepublishOnly": "vp run check && vp run test && vp run build",
     "release:dry": "pnpm publish --dry-run --no-git-checks"
   },
   "devDependencies": {
-    "@typescript/native-preview": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

@@ -1,9 +1,14 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import {defineConfig} from 'vite-plus';
+import {fileURLToPath} from 'node:url';
+import {defineConfig, lazyPlugins} from 'vite-plus';
 
-// Node 22+ emits a warning when --localstorage-file is passed without a valid path
-// by the jsdom environment in Vitest. Suppress it by propagating --no-warnings to workers.
+import {baseFmt, baseSortImportGroups} from '../../tooling/fmt';
+import {baseLint, basePlugins, baseRules, testOverrideRules} from '../../tooling/lint';
+import {baseTest} from '../../tooling/test';
+
+// Node emits a warning when the jsdom environment passes --localstorage-file
+// without a valid path. Suppress it by propagating --no-warnings to workers.
 if (process.env.VITEST) {
   process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ''} --no-warnings`.trim();
 }
@@ -13,176 +18,49 @@ export default defineConfig({
     '*': 'vp check --fix',
   },
   lint: {
-    plugins: ['oxc', 'typescript', 'unicorn', 'react', 'import', 'jsx-a11y', 'vitest'],
-    categories: {
-      correctness: 'error',
-    },
-    options: {
-      typeAware: true,
-      typeCheck: true,
-    },
-    env: {
-      builtin: true,
-      es2024: true,
-    },
-    ignorePatterns: ['node_modules/', 'build/', 'public/', 'dist/', 'coverage/', 'eslint.config.js', '**/*.d.ts'],
+    ...baseLint,
+    plugins: [...basePlugins, 'react', 'jsx-a11y'],
+    ignorePatterns: ['node_modules/', 'build/', 'public/', 'dist/', 'coverage/', '**/*.d.ts'],
     rules: {
-      // Correctness overrides
-      'no-unused-vars': [
-        'error',
-        {
-          args: 'all',
-          argsIgnorePattern: '^_',
-          caughtErrors: 'all',
-          caughtErrorsIgnorePattern: '^_',
-          destructuredArrayIgnorePattern: '^_',
-          varsIgnorePattern: '^_',
-          ignoreRestSiblings: true,
-        },
-      ],
-      'typescript/restrict-template-expressions': ['error', {allowNumber: true}],
+      ...baseRules,
+
+      // Correctness
       'react/exhaustive-deps': 'error',
       'jsx-a11y/prefer-tag-over-role': 'warn',
 
       // Restriction
-      'no-console': 'warn',
-      'no-empty': 'error',
-      'no-empty-function': 'error',
-      'no-regex-spaces': 'error',
-      'no-use-before-define': ['error', {functions: false, classes: true}],
-      'no-var': 'error',
-      'prefer-const': 'error',
-      'prefer-rest-params': 'error',
-      'prefer-spread': 'error',
       'react/no-unknown-property': 'error',
-      'typescript/explicit-function-return-type': [
-        'error',
-        {allowExpressions: true, allowConciseArrowFunctionExpressionsStartingWithVoid: true},
-      ],
-      'typescript/no-empty-object-type': 'error',
-      'typescript/no-explicit-any': 'error',
-      'typescript/no-invalid-void-type': 'error',
-      'typescript/no-namespace': 'error',
-      'typescript/no-non-null-asserted-nullish-coalescing': 'error',
-      'typescript/no-non-null-assertion': 'error',
-      'typescript/no-require-imports': 'error',
-      'typescript/prefer-literal-enum-member': 'error',
-      'typescript/use-unknown-in-catch-callback-variable': 'error',
 
       // Suspicious
-      'no-unexpected-multiline': 'error',
-      'no-useless-constructor': 'error',
-      'import/no-named-as-default': 'error',
-      'import/no-named-as-default-member': 'error',
       'react/jsx-no-comment-textnodes': 'error',
-      'typescript/no-confusing-non-null-assertion': 'error',
-      'typescript/no-extraneous-class': 'error',
-      'typescript/no-unnecessary-boolean-literal-compare': 'error',
-      'typescript/no-unnecessary-template-expression': 'error',
-      'typescript/no-unnecessary-type-arguments': 'error',
-      'typescript/no-unnecessary-type-assertion': 'error',
-      'typescript/no-unnecessary-type-constraint': 'error',
-      'typescript/no-unsafe-enum-comparison': 'error',
 
       // Pedantic
-      'no-array-constructor': 'error',
-      'no-case-declarations': 'error',
-      'no-fallthrough': 'error',
-      'no-prototype-builtins': 'error',
-      'no-redeclare': 'error',
       'react/display-name': 'error',
       'react/jsx-no-target-blank': 'error',
       'react/no-unescaped-entities': 'error',
       'react/rules-of-hooks': 'error',
-      'typescript/ban-ts-comment': ['error', {minimumDescriptionLength: 10}],
-      'typescript/no-confusing-void-expression': ['error', {ignoreArrowShorthand: true, ignoreVoidOperator: true}],
-      'typescript/no-deprecated': 'error',
-      'typescript/no-misused-promises': 'error',
-      'typescript/no-mixed-enums': 'error',
-      'typescript/no-unsafe-argument': 'error',
-      'typescript/no-unsafe-assignment': 'error',
-      'typescript/no-unsafe-call': 'error',
-      'typescript/no-unsafe-function-type': 'error',
-      'typescript/no-unsafe-member-access': 'error',
-      'typescript/no-unsafe-return': 'error',
-      'typescript/only-throw-error': 'error',
-      'typescript/prefer-includes': 'error',
-      'typescript/prefer-nullish-coalescing': 'error',
-      'typescript/prefer-promise-reject-errors': 'error',
-      'typescript/related-getter-setter-pairs': 'error',
-      'typescript/require-await': 'error',
-      'typescript/restrict-plus-operands': [
-        'error',
-        {allowAny: false, allowBoolean: false, allowNullish: false, allowNumberAndString: false, allowRegExp: false},
-      ],
-      'typescript/return-await': ['error', 'error-handling-correctness-only'],
-
-      // Style
-      'import/no-duplicates': 'error',
-      'typescript/adjacent-overload-signatures': 'error',
-      'typescript/array-type': 'error',
-      'typescript/ban-tslint-comment': 'error',
-      'typescript/class-literal-property-style': 'error',
-      'typescript/consistent-generic-constructors': 'error',
-      'typescript/consistent-indexed-object-style': 'error',
-      'typescript/consistent-type-assertions': 'error',
-      'typescript/consistent-type-definitions': ['error', 'type'],
-      'typescript/no-inferrable-types': 'error',
-      'typescript/prefer-find': 'error',
-      'typescript/prefer-for-of': 'error',
-      'typescript/prefer-function-type': 'error',
-      'typescript/prefer-reduce-type-parameter': 'error',
-      'typescript/prefer-regexp-exec': 'error',
-      'typescript/prefer-return-this-type': 'error',
-      'typescript/prefer-string-starts-ends-with': 'error',
-      'typescript/unified-signatures': 'error',
     },
     overrides: [
       {
         files: ['**/*.test.ts', '**/*.test.tsx'],
-        rules: {
-          'no-console': 'off',
-          'vitest/consistent-vitest-vi': 'error',
-          // Tests narrow discriminated unions with `expect.unreachable`, which always throws.
-          'vitest/no-conditional-expect': 'off',
-          'vitest/no-conditional-tests': 'error',
-          'vitest/no-importing-vitest-globals': 'error',
-        },
+        rules: testOverrideRules,
       },
     ],
   },
   fmt: {
-    printWidth: 120,
-    semi: true,
-    trailingComma: 'all',
-    singleQuote: true,
-    arrowParens: 'avoid',
-    bracketSpacing: false,
+    ...baseFmt,
     jsxSingleQuote: true,
     sortImports: {
       newlinesBetween: true,
       customGroups: [{groupName: 'css', elementNamePattern: ['*.css', '*.scss', '*.sass']}],
-      groups: [
-        ['value-builtin', 'value-external'],
-        'value-internal',
-        'type-import',
-        ['value-parent', 'value-sibling', 'value-index'],
-        'css',
-        'unknown',
-      ],
+      groups: [...baseSortImportGroups.slice(0, -1), 'css', 'unknown'],
     },
-    sortPackageJson: false,
-    ignorePatterns: ['dist/', 'coverage/'],
   },
   test: {
+    ...baseTest,
     environment: 'jsdom',
-    globals: true,
     setupFiles: ['./config/vitest.setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
-    clearMocks: true,
-    restoreMocks: true,
-    testTimeout: 10000,
-    passWithNoTests: true,
     coverage: {
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/?(*.)+(story|stories).[tj]sx?', 'src/**/index.ts'],
@@ -193,15 +71,11 @@ export default defineConfig({
         functions: 20,
       },
     },
-    reporters: process.env.CI ? ['default', 'junit'] : ['default'],
-    outputFile: {
-      junit: 'reports/junit/results.xml',
-    },
   },
-  plugins: [tailwindcss(), react()],
+  plugins: lazyPlugins(() => [tailwindcss(), react()]),
   resolve: {
     alias: {
-      '@': new URL('src', import.meta.url).pathname,
+      '@': fileURLToPath(new URL('src', import.meta.url)),
     },
   },
   build: {

@@ -779,7 +779,7 @@ Validation runs on demand and shows results as warnings in the toolbar / status 
 | Tool | Purpose |
 |---|---|
 | React 19 | UI framework |
-| TypeScript 7 (tsgo) | Type safety |
+| TypeScript 7 (`tsc`) | Type safety |
 | Vite+ | Build, dev, lint (Oxlint), format (Oxfmt), test (Vitest) |
 | TanStack Router | URL state, route layer |
 | TanStack Query | Server state (projects, auth, sync) |

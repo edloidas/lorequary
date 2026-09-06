@@ -1,4 +1,5 @@
 import {useStore} from '@nanostores/react';
+import {cn} from 'cn';
 
 import {$project} from '@/modules/project/model/store';
 import {$currentDialogueId, $selection} from '@/modules/workspace/model/store';
@@ -8,7 +9,6 @@ import {
   $validationOpen,
   formatIssueLocation,
 } from '@/modules/workspace/model/validation';
-import {cn} from '@/shared/lib/cn';
 
 import type {GraphIssue} from '@lorequary/core';
 import type {ReactElement} from 'react';

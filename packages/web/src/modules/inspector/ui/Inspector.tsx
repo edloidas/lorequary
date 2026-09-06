@@ -1,5 +1,6 @@
 import {optionKey} from '@lorequary/core';
 import {useStore} from '@nanostores/react';
+import {cn} from 'cn';
 import {nanoid} from 'nanoid';
 
 import {$numericVariables, $variableSchema} from '@/modules/project/model/derived';
@@ -15,7 +16,6 @@ import {
   updateNode,
 } from '@/modules/workspace/model/commands';
 import {$currentDialogue, $selection, clearSelection} from '@/modules/workspace/model/store';
-import {cn} from '@/shared/lib/cn';
 import {ExpressionInput} from '@/shared/ui/ExpressionInput';
 import {Field, NumberInput, Select, SmallButton, TextArea, TextInput} from '@/shared/ui/fields';
 

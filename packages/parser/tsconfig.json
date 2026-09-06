@@ -4,12 +4,9 @@
     "lib": ["ESNext"],
     "strict": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
-    "useUnknownInCatchVariables": true,
     "noUncheckedIndexedAccess": true,
     "module": "ESNext",
-    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "noEmit": true,
     "types": ["vite-plus/test/globals"]

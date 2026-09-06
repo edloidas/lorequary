@@ -1,6 +1,7 @@
+import {cn} from 'cn';
+
 import {endCoalescing} from '@/modules/workspace/model/commands';
 import {useLiveDraft} from '@/shared/hooks/useLiveDraft';
-import {cn} from '@/shared/lib/cn';
 
 import type {ReactElement, ReactNode} from 'react';
 

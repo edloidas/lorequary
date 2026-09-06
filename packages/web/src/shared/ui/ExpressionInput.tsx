@@ -1,8 +1,8 @@
 import {parseCondition, parseEffect, validate} from '@lorequary/parser';
+import {cn} from 'cn';
 import {useMemo} from 'react';
 
 import {useLiveDraft} from '@/shared/hooks/useLiveDraft';
-import {cn} from '@/shared/lib/cn';
 
 import type {VariableSchema} from '@lorequary/parser';
 import type {ReactElement} from 'react';

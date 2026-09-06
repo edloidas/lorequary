@@ -1,11 +1,11 @@
 import {useStore} from '@nanostores/react';
+import {cn} from 'cn';
 
 import {$playtest, startPlaytest, stopPlaytest} from '@/modules/playtest/model/store';
 import {$appView} from '@/modules/project/model/navigation';
 import {$canRedo, $canUndo, addNode, groupNodes, redo, runCommand, undo} from '@/modules/workspace/model/commands';
 import {$activeGroupId, $currentDialogue, $selection, clearSelection} from '@/modules/workspace/model/store';
 import {$validationIssues, $validationOpen} from '@/modules/workspace/model/validation';
-import {cn} from '@/shared/lib/cn';
 
 import type {NodeKind} from '@lorequary/core';
 import type {ReactElement} from 'react';

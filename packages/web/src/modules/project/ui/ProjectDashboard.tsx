@@ -1,4 +1,5 @@
 import {useStore} from '@nanostores/react';
+import {cn} from 'cn';
 import {useState} from 'react';
 
 import {$appView} from '@/modules/project/model/navigation';
@@ -11,7 +12,6 @@ import {
   runCommand,
 } from '@/modules/workspace/model/commands';
 import {$activeGroupId, $currentDialogueId, clearSelection} from '@/modules/workspace/model/store';
-import {cn} from '@/shared/lib/cn';
 import {TextInput} from '@/shared/ui/fields';
 
 import type {Dialogue} from '@lorequary/core';

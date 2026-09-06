@@ -1,9 +1,9 @@
 import {useStore} from '@nanostores/react';
+import {cn} from 'cn';
 import {useEffect, useRef} from 'react';
 
 import {$project} from '@/modules/project/model/store';
 import {$currentDialogue} from '@/modules/workspace/model/store';
-import {cn} from '@/shared/lib/cn';
 import {Select, SmallButton} from '@/shared/ui/fields';
 
 import type {PlaytestLogEntry, PlaytestMode} from '../model/store';

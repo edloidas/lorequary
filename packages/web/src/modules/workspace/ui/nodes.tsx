@@ -1,5 +1,6 @@
 import {useStore} from '@nanostores/react';
 import {Handle, Position} from '@xyflow/react';
+import {cn} from 'cn';
 import {useState} from 'react';
 
 import {$project} from '@/modules/project/model/store';
@@ -7,7 +8,6 @@ import {runCommand, updateNode} from '@/modules/workspace/model/commands';
 import {$contextMenu, $currentDialogue, $currentDialogueId, $quickAdd} from '@/modules/workspace/model/store';
 import {$focusNodeId} from '@/modules/workspace/model/validation';
 import {useLiveDraft} from '@/shared/hooks/useLiveDraft';
-import {cn} from '@/shared/lib/cn';
 
 import type {DialogFlowNode, GroupFlowNode} from '../flow/adapter';
 import type {

@@ -1,7 +1,6 @@
 packages:
   - packages/*
 catalog:
-  '@typescript/native-preview': 7.0.0-dev.20260707.2
   # Must match the vitest that vite-plus bundles; `vp toolchain` prints it.
   '@vitest/coverage-v8': 4.1.11
   typescript: ^7.0.2
@@ -12,7 +11,6 @@ allowBuilds:
   unrs-resolver: false
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
-  - '@typescript/native-preview'
 overrides:
   vite@*: 'catalog:'
 peerDependencyRules:
